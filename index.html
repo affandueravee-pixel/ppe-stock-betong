@@ -545,10 +545,10 @@ class App extends React.Component {
     const qty=parseInt(this.val('ai_qty'))||0, min=parseInt(this.val('ai_min'))||0, loc=this.val('ai_loc')||'-';
     const code='PPE-'+String(this.state.items.length+1).padStart(3,'0');
     const item={ id:'i'+Date.now()+Math.floor(Math.random()*1e6), code, name, cat, unit, qty, min, loc };
-    const moves = qty>0 ? [{ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'in', kind:null, item:name, qty, unit, party:'ตั้งต้นรายการใหม่', sub:code, ref:'RCV-NEW', date:this.thaiToday() }] : [];
-    this.setState({ items:[item, ...this.state.items], movements:[...moves, ...this.state.movements], modal:null });
+    // ยอดเริ่มต้น = ยอดยกมา (ไม่นับเป็น "รับเข้า")
+    this.setState({ items:[item, ...this.state.items], modal:null });
     if(SB_READY){
-      try { await db.upsertItem(item); if(moves.length) await db.insertMovements(moves); }
+      try { await db.upsertItem(item); }
       catch(e){ this.toast('บันทึกลง DB ไม่สำเร็จ', e.message||'', 'danger'); return; }
     }
     this.toast('เพิ่มรายการสำเร็จ', code+' · '+name,'success');
