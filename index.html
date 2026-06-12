@@ -267,6 +267,7 @@ class App extends React.Component {
     notifOpen: false,
     kpiAnim: null,
     catFilter: 'ทั้งหมด',
+    invSort: { key:'code', dir:'asc' },
     histFilter: 'all',
     reportTab: 'stock',
     globalSearch: '',
@@ -388,6 +389,7 @@ class App extends React.Component {
   }
   openDetail(type,id){ this.setState({ detail:{type,id} }); }
   closeDetail(){ this.setState({ detail:null }); }
+  setInvSort(key){ this.setState(s=>{ const c=s.invSort; const dir = c.key===key ? (c.dir==='asc'?'desc':'asc') : 'asc'; return { invSort:{ key, dir } }; }); }
 
   // ---------- edit / delete ----------
   openEditWorker(w){ if(!this.requireAdmin()) return; this.setState({ editData:{ type:'worker', id:w.id, name:w.name, pos:w.pos||'', dept:w.dept||'' } }); }
@@ -742,7 +744,20 @@ class App extends React.Component {
     });
 
     const itemMatches=(it)=>{ const q=S.globalSearch.trim(); if(q && !(it.name+it.code+it.loc).toLowerCase().includes(q.toLowerCase())) return false; if(S.catFilter!=='ทั้งหมด' && it.cat!==S.catFilter) return false; return true; };
-    const invRows=S.items.filter(itemMatches).map(it=>{ const st=this.status(it), col=this.catColor(it.cat);
+    const sortRank=(it)=> it.qty<=0 ? 0 : (it.qty<=it.min ? 1 : 2); // หมด=0, ใกล้หมด=1, ปกติ=2
+    const sk=S.invSort.key, sdir=S.invSort.dir;
+    const invSorted=S.items.filter(itemMatches).slice().sort((a,b)=>{
+      let av,bv;
+      if(sk==='qty'){ av=a.qty; bv=b.qty; }
+      else if(sk==='status'){ av=sortRank(a); bv=sortRank(b); }
+      else if(sk==='name'){ av=a.name; bv=b.name; }
+      else if(sk==='cat'){ av=a.cat; bv=b.cat; }
+      else if(sk==='loc'){ av=a.loc||''; bv=b.loc||''; }
+      else { av=a.code; bv=b.code; }
+      let cmp = (typeof av==='number' && typeof bv==='number') ? (av-bv) : (''+av).localeCompare(''+bv,'th');
+      return sdir==='asc' ? cmp : -cmp;
+    });
+    const invRows=invSorted.map(it=>{ const st=this.status(it), col=this.catColor(it.cat);
       return { id:it.id, code:it.code, name:it.name, unit:it.unit, min:it.min, loc:it.loc, qty:this.fmt(it.qty), cat:it.cat,
         catStyle:{fontSize:11.5,fontWeight:600,color:col,background:col+'1A',padding:'4px 10px',borderRadius:8,justifySelf:'start',whiteSpace:'nowrap'},
         statusLabel:st.label, statusStyle:{fontSize:11.5,fontWeight:600,color:st.color,background:st.bg,padding:'4px 10px',borderRadius:20,whiteSpace:'nowrap'},
@@ -876,6 +891,8 @@ class App extends React.Component {
       lowStockView, recentView,
 
       invRows, catFilters, openAddItem:()=>this.openModal('item'),
+      invSort:S.invSort, sortInv:(key)=>this.setInvSort(key),
+      sortArrow:(key)=> S.invSort.key===key ? (S.invSort.dir==='asc'?' ▲':' ▼') : '',
       histFilters, histRows,
 
       reportStats, reportIsStock, reportIsMove:!reportIsStock, catReport,
@@ -1346,7 +1363,12 @@ class App extends React.Component {
 
                 <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)')}>
                   <div style={css('display:grid;grid-template-columns:'+V.invGrid+';gap:14px;padding:14px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
-                    <span>รหัส</span><span>รายการ</span><span>หมวดหมู่</span><span>ระดับคงเหลือ</span><span>จุดจัดเก็บ</span><span style={css('text-align:center')}>สถานะ</span>{V.isAdmin && <span style={css('text-align:center')}>จัดการ</span>}
+                    <Box tag="span" onClick={()=>V.sortInv('code')} s="cursor:pointer;user-select:none;transition:color .15s" h="color:#8B2FA8">รหัส{V.sortArrow('code')}</Box>
+                    <Box tag="span" onClick={()=>V.sortInv('name')} s="cursor:pointer;user-select:none;transition:color .15s" h="color:#8B2FA8">รายการ{V.sortArrow('name')}</Box>
+                    <Box tag="span" onClick={()=>V.sortInv('cat')} s="cursor:pointer;user-select:none;transition:color .15s" h="color:#8B2FA8">หมวดหมู่{V.sortArrow('cat')}</Box>
+                    <Box tag="span" onClick={()=>V.sortInv('qty')} s="cursor:pointer;user-select:none;transition:color .15s" h="color:#8B2FA8">ระดับคงเหลือ{V.sortArrow('qty')}</Box>
+                    <Box tag="span" onClick={()=>V.sortInv('loc')} s="cursor:pointer;user-select:none;transition:color .15s" h="color:#8B2FA8">จุดจัดเก็บ{V.sortArrow('loc')}</Box>
+                    <Box tag="span" onClick={()=>V.sortInv('status')} s="cursor:pointer;user-select:none;text-align:center;transition:color .15s" h="color:#8B2FA8">สถานะ{V.sortArrow('status')}</Box>{V.isAdmin && <span style={css('text-align:center')}>จัดการ</span>}
                   </div>
                   <div>
                     {V.invRows.map((it,i)=>(
