@@ -706,11 +706,13 @@ class App extends React.Component {
     ];
 
     const av=(n)=>n.trim().charAt(0);
-    const workerRows=S.workers.map(w=>{ const sm=this.issueSummary(w.name);
+    const q=(S.globalSearch||'').trim().toLowerCase();
+    const matchAny=(...vals)=>{ if(!q) return true; return vals.some(v=>(v||'').toString().toLowerCase().includes(q)); };
+    const workerRows=S.workers.filter(w=>matchAny(w.name,w.pos,w.dept)).map(w=>{ const sm=this.issueSummary(w.name);
       return { id:w.id, name:w.name, pos:w.pos, dept:w.dept, avatar:av(w.name), last:sm.latest, count:sm.count, onClick:()=>this.openDetail('worker',w.id),
         onEdit:(e)=>{ e.stopPropagation(); this.openEditWorker(w); },
         onDelete:(e)=>{ e.stopPropagation(); this.openDeleteConfirm('worker',w.id,w.name); } }; });
-    const teamRows=S.teams.map(t=>{ const sm=this.issueSummary(t.name); const lead=S.workers.find(x=>x.id===t.leadId);
+    const teamRows=S.teams.filter(t=>{ const lead=S.workers.find(x=>x.id===t.leadId); return matchAny(t.name,(lead?lead.name:''),t.plates.join(' ')); }).map(t=>{ const sm=this.issueSummary(t.name); const lead=S.workers.find(x=>x.id===t.leadId);
       return { name:t.name, lead:lead?lead.name:'-', memberCount:t.memberIds.length, vehicles:t.plates.join(', ')||'-',
         total:this.fmt(sm.total), count:sm.count, latest:sm.latest, onClick:()=>this.openDetail('team',t.id),
         onEdit:(e)=>{ e.stopPropagation(); this.openEditTeam(t); },
@@ -727,7 +729,7 @@ class App extends React.Component {
         dt=build(t.name,{ isTeam:true, sub:'หัวหน้าชุด: '+(lead?lead.name:'-'), avatar:'ช',
           members:t.memberIds.map(id=>{ const m=S.workers.find(x=>x.id===id); return m?m.name:''; }).filter(Boolean), vehicles:t.plates }); } }
     }
-    const vehicleRows=S.vehicles.map(v=>({ plate:v.plate, type:v.type, team:v.team,
+    const vehicleRows=S.vehicles.filter(v=>matchAny(v.plate,v.type,v.team)).map(v=>({ plate:v.plate, type:v.type, team:v.team,
       iconWrap:{width:46,height:46,borderRadius:13,background:'#F3EAF8',color:'#8B2FA8',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0} }));
 
     const is=S.issue;
