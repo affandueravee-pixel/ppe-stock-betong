@@ -69,8 +69,8 @@ create table if not exists app_meta (
 insert into app_meta(k,v) values ('refSeq', 24) on conflict (k) do nothing;
 
 -- ---------- ROW LEVEL SECURITY ----------
--- ระบบนี้ใช้ single account (จนท.คลัง) — เปิด RLS
--- และอนุญาตเฉพาะผู้ที่ login แล้วเท่านั้น (authenticated)
+-- โหมด: เผยแพร่ให้ "ทุกคนดูได้" (anon = อ่านอย่างเดียว)
+--       แต่ "แก้ไขได้เฉพาะ จนท.คลัง" ที่ login แล้ว (authenticated)
 alter table items     enable row level security;
 alter table workers   enable row level security;
 alter table vehicles  enable row level security;
@@ -82,9 +82,15 @@ do $$
 declare t text;
 begin
   for t in select unnest(array['items','workers','vehicles','teams','movements','app_meta']) loop
+    -- เขียน/แก้ไข/ลบ ได้เฉพาะผู้ที่ login (authenticated)
     execute format('drop policy if exists "auth_all" on %I', t);
     execute format(
       'create policy "auth_all" on %I for all to authenticated using (true) with check (true)', t
+    );
+    -- อ่าน (SELECT) ได้ทั้งสาธารณะ (anon) — ดูได้โดยไม่ต้อง login
+    execute format('drop policy if exists "public_read" on %I', t);
+    execute format(
+      'create policy "public_read" on %I for select to anon using (true)', t
     );
   end loop;
 end$$;
