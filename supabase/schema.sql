@@ -41,8 +41,11 @@ create table if not exists teams (
   lead_id     text references workers(id) on delete set null,
   member_ids  text[] not null default '{}',
   plates      text[] not null default '{}',
+  ord         int,
   created_at  timestamptz default now()
 );
+-- เผื่อสร้างตารางไว้ก่อนหน้า: เพิ่มคอลัมน์ ord (ลำดับการจัดเรียงแบบลาก)
+alter table teams add column if not exists ord int;
 
 create table if not exists movements (
   id          text primary key,

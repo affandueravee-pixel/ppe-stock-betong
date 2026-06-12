@@ -103,7 +103,7 @@ const db = {
       items:     (items.data||[]).map(r=>({ id:r.id, code:r.code, name:r.name, cat:r.cat, unit:r.unit, qty:r.qty, min:r.min_qty, loc:r.loc })),
       workers:   workers.data||[],
       vehicles:  vehicles.data||[],
-      teams:     (teams.data||[]).map(r=>({ id:r.id, name:r.name, leadId:r.lead_id, memberIds:r.member_ids||[], plates:r.plates||[] })),
+      teams:     (teams.data||[]).map(r=>({ id:r.id, name:r.name, leadId:r.lead_id, memberIds:r.member_ids||[], plates:r.plates||[], ord:(r.ord==null?null:r.ord) })).sort((a,b)=>(a.ord==null?1e9:a.ord)-(b.ord==null?1e9:b.ord)),
       movements: (movements.data||[]).map(r=>({ id:r.id, type:r.type, kind:r.kind, item:r.item, qty:r.qty, unit:r.unit, party:r.party, sub:r.sub, ref:r.ref, date:r.date_text })),
       refSeq:    meta.data ? meta.data.v : 24,
     };
@@ -274,6 +274,8 @@ class App extends React.Component {
     editData: null,
     deleteConfirm: null,
     teamForm: { name:'', leadId:'', memberIds:[], plates:[] },
+    draggingTeam: null,
+    overTeam: null,
     toast: null,
     sigInk: false,
     issue: { kind:'individual', recipientId:'', lineItem:'', lineQty:1, lines:[], note:'' },
@@ -447,6 +449,25 @@ class App extends React.Component {
   openEditTeam(t){ if(!this.requireAdmin()) return; this.setState({ editData:{ type:'team', id:t.id, name:t.name, leadId:t.leadId||'', memberIds:[...(t.memberIds||[])], plates:[...(t.plates||[])] } }); }
   toggleEditMember(wid){ this.setState(s=>{ const m=s.editData.memberIds; return { editData:{ ...s.editData, memberIds:m.includes(wid)?m.filter(x=>x!==wid):[...m,wid] } }; }); }
   toggleEditPlate(plate){ this.setState(s=>{ const p=s.editData.plates; return { editData:{ ...s.editData, plates:p.includes(plate)?p.filter(x=>x!==plate):[...p,plate] } }; }); }
+  // ---------- team reorder (drag & drop) ----------
+  onTeamDragStart(id){ this._dragTeamId=id; this.setState({ draggingTeam:id }); }
+  onTeamDragOver(id,e){ if(e) e.preventDefault(); if(this.state.overTeam!==id) this.setState({ overTeam:id }); }
+  onTeamDragEnd(){ this._dragTeamId=null; this.setState({ draggingTeam:null, overTeam:null }); }
+  async onTeamDrop(targetId){
+    const fromId=this._dragTeamId; this._dragTeamId=null;
+    this.setState({ draggingTeam:null, overTeam:null });
+    if(!this.props.isAdmin || !fromId || fromId===targetId) return;
+    const arr=this.state.teams.map(t=>({...t}));
+    const from=arr.findIndex(t=>t.id===fromId), to=arr.findIndex(t=>t.id===targetId);
+    if(from<0||to<0) return;
+    const [m]=arr.splice(from,1); arr.splice(to,0,m);
+    arr.forEach((t,i)=>{ t.ord=i; });
+    this.setState({ teams:arr });
+    if(SB_READY){
+      try { await Promise.all(arr.map((t,i)=>db.updateTeam(t.id,{ ord:i }))); }
+      catch(e){ this.toast('บันทึกลำดับไม่สำเร็จ','ต้องเพิ่มคอลัมน์ ord ในตาราง teams ก่อน (ดูคำแนะนำ)','warn'); }
+    }
+  }
   async submitEditTeam(){
     const d=this.state.editData; if(!d) return;
     const name=(d.name||'').trim(); if(!name){ this.toast('กรุณากรอกชื่อชุด','','warn'); return; }
@@ -486,7 +507,8 @@ class App extends React.Component {
       trash:[P('M3 6h18'),P('M8 6V4h8v2'),P('M19 6l-1 14H6L5 6')],
       info:[C(12,12,9),P('M12 8v.2'),P('M12 11v5')],
       lock:[P('M6 10V7a6 6 0 0112 0v3'),P('M5 10h14v10H5z')],
-      login:[P('M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4'),P('M10 17l5-5-5-5'),P('M15 12H3')]
+      login:[P('M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4'),P('M10 17l5-5-5-5'),P('M15 12H3')],
+      grip:[C(9,6,1),C(9,12,1),C(9,18,1),C(15,6,1),C(15,12,1),C(15,18,1)]
     };
     return React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.7,strokeLinecap:'round',strokeLinejoin:'round'}, sets[name]||[]);
   }
@@ -776,7 +798,7 @@ class App extends React.Component {
         onEdit:(e)=>{ e.stopPropagation(); this.openEditWorker(w); },
         onDelete:(e)=>{ e.stopPropagation(); this.openDeleteConfirm('worker',w.id,w.name); } }; });
     const teamRows=S.teams.filter(t=>{ const lead=S.workers.find(x=>x.id===t.leadId); return matchAny(t.name,(lead?lead.name:''),t.plates.join(' ')); }).map(t=>{ const sm=this.issueSummary(t.name); const lead=S.workers.find(x=>x.id===t.leadId);
-      return { name:t.name, lead:lead?lead.name:'-', memberCount:t.memberIds.length, vehicles:t.plates.join(', ')||'-',
+      return { id:t.id, name:t.name, lead:lead?lead.name:'-', memberCount:t.memberIds.length, vehicles:t.plates.join(', ')||'-',
         total:this.fmt(sm.total), count:sm.count, latest:sm.latest, onClick:()=>this.openDetail('team',t.id),
         onEdit:(e)=>{ e.stopPropagation(); this.openEditTeam(t); },
         onDelete:(e)=>{ e.stopPropagation(); this.openDeleteConfirm('team',t.id,t.name); } }; });
@@ -865,7 +887,11 @@ class App extends React.Component {
       invGrid: this.props.isAdmin ? '90px 2.2fr 1fr 1.4fr 1.1fr 100px 72px' : '90px 2.2fr 1fr 1.4fr 1.1fr 100px',
       workerRows, openAddWorker:()=>this.openModal('worker'),
       vehicleRows, openAddVehicle:()=>this.openModal('vehicle'),
-      trashIcon:I('trash',15), infoIcon:I('info',15), lockIcon:I('lock',16), loginIcon:I('login',16),
+      trashIcon:I('trash',15), infoIcon:I('info',15), lockIcon:I('lock',16), loginIcon:I('login',16), gripIcon:I('grip',16),
+      teamDragEnabled: !!this.props.isAdmin && !q,
+      draggingTeam:S.draggingTeam, overTeam:S.overTeam,
+      onTeamDragStart:(id)=>this.onTeamDragStart(id), onTeamDragOver:(id,e)=>this.onTeamDragOver(id,e),
+      onTeamDrop:(id)=>this.onTeamDrop(id), onTeamDragEnd:()=>this.onTeamDragEnd(),
       editDataOpen:!!S.editData, editDataType:S.editData?S.editData.type:null, editData:S.editData||{},
       setEditField:(f,v)=>this.setEditField(f,v),
       submitEditWorker:()=>this.submitEditWorker(), submitEditItem:()=>this.submitEditItem(),
@@ -1461,18 +1487,29 @@ class App extends React.Component {
             {/* ============ TEAMS ============ */}
             {V.isTeams && (
               <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto')}>
-                <div style={css('display:flex;justify-content:flex-end;margin-bottom:16px')}>
+                <div style={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap')}>
+                  {V.teamDragEnabled
+                    ? <span style={css('display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#8A8398;background:#F6EEFA;border:1px solid #ECE0F4;padding:7px 13px;border-radius:10px')}>{V.gripIcon} ลากการ์ดเพื่อจัดเรียงลำดับ</span>
+                    : <span></span>}
                   {V.isAdmin && <Box tag="button" onClick={V.openAddTeam} s="height:42px;padding:0 18px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(139,47,168,.28);transition:all .16s" h="transform:translateY(-1px);box-shadow:0 10px 24px rgba(139,47,168,.4)">{V.plusIcon} เพิ่มชุดปฏิบัติงาน</Box>}
                 </div>
                 <div style={css('display:grid;grid-template-columns:repeat(2,1fr);gap:16px')}>
                 {V.teamRows.map((t,i)=>(
-                  <Box key={i} onClick={t.onClick} s="background:#fff;border:1px solid #ECEAF1;border-radius:18px;padding:20px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 8px 24px rgba(33,26,46,.05);transition:all .18s;cursor:pointer" h="transform:translateY(-3px);box-shadow:0 16px 36px rgba(122,35,168,.14);border-color:#E2CDEC">
+                  <Box key={t.id}
+                    draggable={V.teamDragEnabled}
+                    onDragStart={(e)=>{ V.onTeamDragStart(t.id); if(e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',t.id);}catch(_){} } }}
+                    onDragOver={(e)=>V.onTeamDragOver(t.id,e)}
+                    onDrop={(e)=>{ e.preventDefault(); V.onTeamDrop(t.id); }}
+                    onDragEnd={()=>V.onTeamDragEnd()}
+                    onClick={t.onClick}
+                    s={"position:relative;background:#fff;border:1px solid "+(V.overTeam===t.id&&V.draggingTeam!==t.id?'#8B2FA8':'#ECEAF1')+";border-radius:18px;padding:20px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 8px 24px rgba(33,26,46,.05);transition:border-color .12s,box-shadow .18s;cursor:"+(V.teamDragEnabled?'grab':'pointer')+";opacity:"+(V.draggingTeam===t.id?'.45':'1')+";"+(V.overTeam===t.id&&V.draggingTeam!==t.id?'box-shadow:0 0 0 3px rgba(139,47,168,.14),0 8px 24px rgba(122,35,168,.16);':'')} h="box-shadow:0 16px 36px rgba(122,35,168,.14);border-color:#E2CDEC">
                     <div style={css('display:flex;align-items:center;gap:13px')}>
                       <span style={css('width:48px;height:48px;border-radius:14px;background:linear-gradient(140deg,#7A23A8,#3E1457);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0')}>{V.teamMiniIcon}</span>
                       <div style={css('flex:1;min-width:0')}>
                         <div style={css('font-size:15.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{t.name}</div>
                         <div style={css('font-size:12.5px;color:#8A8398')}>หัวหน้าชุด: {t.lead}</div>
                       </div>
+                      {V.teamDragEnabled && <span title="ลากเพื่อจัดเรียง" style={css('color:#C9BFD8;flex-shrink:0;cursor:grab;display:flex')}>{V.gripIcon}</span>}
                       <span style={css('color:#C9BFD8;flex-shrink:0')}>{V.chevronRight}</span>
                     </div>
                     <div style={css('margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px')}>
