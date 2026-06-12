@@ -126,6 +126,9 @@ const db = {
   async updateWorker(id, data){ const { error } = await sb.from('workers').update(data).eq('id', id); if(error) throw error; },
   async deleteItem(id){ const { error } = await sb.from('items').delete().eq('id', id); if(error) throw error; },
   async updateItem(id, data){ const { error } = await sb.from('items').update(data).eq('id', id); if(error) throw error; },
+  async insertTeam(t){ const { error } = await sb.from('teams').insert({ id:t.id, name:t.name, lead_id:t.leadId||null, member_ids:t.memberIds, plates:t.plates }); if(error) throw error; },
+  async updateTeam(id, data){ const { error } = await sb.from('teams').update(data).eq('id', id); if(error) throw error; },
+  async deleteTeam(id){ const { error } = await sb.from('teams').delete().eq('id', id); if(error) throw error; },
 };
 window.__db = db;
 window.__sb = sb;
@@ -218,6 +221,7 @@ class App extends React.Component {
     modal: null,
     editData: null,
     deleteConfirm: null,
+    teamForm: { name:'', leadId:'', memberIds:[], plates:[] },
     toast: null,
     sigInk: false,
     issue: { kind:'individual', recipientId:'', lineItem:'', lineQty:1, lines:[], note:'' },
@@ -368,7 +372,36 @@ class App extends React.Component {
       if(SB_READY) try{ await db.deleteItem(dc.id); this.toast('ลบแล้ว',dc.name,'success'); }
       catch(e){ this.toast('ลบไม่สำเร็จ',e.message,'danger'); }
       else this.toast('ลบแล้ว',dc.name,'success');
+    } else if(dc.type==='team'){
+      this.setState(s=>({ teams:s.teams.filter(t=>t.id!==dc.id) }));
+      if(SB_READY) try{ await db.deleteTeam(dc.id); this.toast('ลบแล้ว',dc.name,'success'); }
+      catch(e){ this.toast('ลบไม่สำเร็จ',e.message,'danger'); }
+      else this.toast('ลบแล้ว',dc.name,'success');
     }
+  }
+  // ---------- team form ----------
+  setTeamForm(k,v){ this.setState(s=>({ teamForm:{ ...s.teamForm, [k]:v } })); }
+  toggleTeamMember(wid){ this.setState(s=>{ const m=s.teamForm.memberIds; return { teamForm:{ ...s.teamForm, memberIds:m.includes(wid)?m.filter(x=>x!==wid):[...m,wid] } }; }); }
+  toggleTeamPlate(plate){ this.setState(s=>{ const p=s.teamForm.plates; return { teamForm:{ ...s.teamForm, plates:p.includes(plate)?p.filter(x=>x!==plate):[...p,plate] } }; }); }
+  async submitAddTeam(){
+    const tf=this.state.teamForm; const name=tf.name.trim();
+    if(!name){ this.toast('กรุณากรอกชื่อชุด','','warn'); return; }
+    const t={ id:'t'+Date.now()+Math.floor(Math.random()*1e6), name, leadId:tf.leadId||null, memberIds:tf.memberIds, plates:tf.plates };
+    this.setState(s=>({ teams:[t,...s.teams], modal:null, teamForm:{ name:'', leadId:'', memberIds:[], plates:[] } }));
+    if(SB_READY) try{ await db.insertTeam(t); this.toast('เพิ่มชุดสำเร็จ',name,'success'); }
+    catch(e){ this.toast('บันทึก DB ไม่สำเร็จ',e.message,'danger'); }
+    else this.toast('เพิ่มชุดสำเร็จ',name,'success');
+  }
+  openEditTeam(t){ this.setState({ editData:{ type:'team', id:t.id, name:t.name, leadId:t.leadId||'', memberIds:[...(t.memberIds||[])], plates:[...(t.plates||[])] } }); }
+  toggleEditMember(wid){ this.setState(s=>{ const m=s.editData.memberIds; return { editData:{ ...s.editData, memberIds:m.includes(wid)?m.filter(x=>x!==wid):[...m,wid] } }; }); }
+  toggleEditPlate(plate){ this.setState(s=>{ const p=s.editData.plates; return { editData:{ ...s.editData, plates:p.includes(plate)?p.filter(x=>x!==plate):[...p,plate] } }; }); }
+  async submitEditTeam(){
+    const d=this.state.editData; if(!d) return;
+    const name=(d.name||'').trim(); if(!name){ this.toast('กรุณากรอกชื่อชุด','','warn'); return; }
+    this.setState(s=>({ teams:s.teams.map(t=>t.id===d.id?{...t,name,leadId:d.leadId||null,memberIds:d.memberIds,plates:d.plates}:t), editData:null }));
+    if(SB_READY) try{ await db.updateTeam(d.id,{ name, lead_id:d.leadId||null, member_ids:d.memberIds, plates:d.plates }); this.toast('แก้ไขสำเร็จ',name,'success'); }
+    catch(e){ this.toast('แก้ไขไม่สำเร็จ',e.message,'danger'); }
+    else this.toast('แก้ไขสำเร็จ',name,'success');
   }
 
   // ---------- icons ----------
@@ -679,7 +712,9 @@ class App extends React.Component {
         onDelete:(e)=>{ e.stopPropagation(); this.openDeleteConfirm('worker',w.id,w.name); } }; });
     const teamRows=S.teams.map(t=>{ const sm=this.issueSummary(t.name); const lead=S.workers.find(x=>x.id===t.leadId);
       return { name:t.name, lead:lead?lead.name:'-', memberCount:t.memberIds.length, vehicles:t.plates.join(', ')||'-',
-        total:this.fmt(sm.total), count:sm.count, latest:sm.latest, onClick:()=>this.openDetail('team',t.id) }; });
+        total:this.fmt(sm.total), count:sm.count, latest:sm.latest, onClick:()=>this.openDetail('team',t.id),
+        onEdit:(e)=>{ e.stopPropagation(); this.openEditTeam(t); },
+        onDelete:(e)=>{ e.stopPropagation(); this.openDeleteConfirm('team',t.id,t.name); } }; });
     let dt={ open:false, agg:[], moves:[], members:[], vehicles:[] };
     if(S.detail){
       const build=(name,extra)=>{ const sm=this.issueSummary(name);
@@ -791,8 +826,13 @@ class App extends React.Component {
       toastIconWrap:{width:36,height:36,borderRadius:10,background:tc.bg,color:tc.col,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0},
 
       modalOpen:!!S.modal, closeModal:()=>this.closeModal(), stop:(e)=>e.stopPropagation(),
-      modalIsItem:S.modal==='item', modalIsWorker:S.modal==='worker', modalIsVehicle:S.modal==='vehicle',
-      modalTitle: S.modal==='item'?'เพิ่มรายการอุปกรณ์': S.modal==='worker'?'เพิ่มผู้ปฏิบัติงาน': S.modal==='vehicle'?'เพิ่มทะเบียนรถ':'',
+      modalIsItem:S.modal==='item', modalIsWorker:S.modal==='worker', modalIsVehicle:S.modal==='vehicle', modalIsTeam:S.modal==='team',
+      modalTitle: S.modal==='item'?'เพิ่มรายการอุปกรณ์': S.modal==='worker'?'เพิ่มผู้ปฏิบัติงาน': S.modal==='vehicle'?'เพิ่มทะเบียนรถ': S.modal==='team'?'เพิ่มชุดปฏิบัติงาน':'',
+      teamForm:S.teamForm, setTeamForm:(k,v)=>this.setTeamForm(k,v),
+      toggleTeamMember:(id)=>this.toggleTeamMember(id), toggleTeamPlate:(p)=>this.toggleTeamPlate(p),
+      submitAddTeam:()=>this.submitAddTeam(), openAddTeam:()=>this.openModal('team'),
+      toggleEditMember:(id)=>this.toggleEditMember(id), toggleEditPlate:(p)=>this.toggleEditPlate(p),
+      submitEditTeam:()=>this.submitEditTeam(),
       catOptions:['ศีรษะ','ตา/ใบหน้า','มือ','เท้า','ลำตัว','กันตก','อื่นๆ'],
       deptOptions:['แผนกปฏิบัติการและบำรุงรักษา','แผนกก่อสร้าง','แผนกมิเตอร์','แผนกบริการลูกค้า'],
       vtypeOptions:['รถกระเช้าแก้ไฟ','รถเครน','รถเครนเจาะ','รถบรรทุก','รถกระบะ'],
@@ -1345,7 +1385,11 @@ class App extends React.Component {
 
             {/* ============ TEAMS ============ */}
             {V.isTeams && (
-              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:16px')}>
+              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto')}>
+                <div style={css('display:flex;justify-content:flex-end;margin-bottom:16px')}>
+                  <Box tag="button" onClick={V.openAddTeam} s="height:42px;padding:0 18px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(139,47,168,.28);transition:all .16s" h="transform:translateY(-1px);box-shadow:0 10px 24px rgba(139,47,168,.4)">{V.plusIcon} เพิ่มชุดปฏิบัติงาน</Box>
+                </div>
+                <div style={css('display:grid;grid-template-columns:repeat(2,1fr);gap:16px')}>
                 {V.teamRows.map((t,i)=>(
                   <Box key={i} onClick={t.onClick} s="background:#fff;border:1px solid #ECEAF1;border-radius:18px;padding:20px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 8px 24px rgba(33,26,46,.05);transition:all .18s;cursor:pointer" h="transform:translateY(-3px);box-shadow:0 16px 36px rgba(122,35,168,.14);border-color:#E2CDEC">
                     <div style={css('display:flex;align-items:center;gap:13px')}>
@@ -1371,11 +1415,16 @@ class App extends React.Component {
                       </div>
                     </div>
                     <div style={css('margin-top:12px;display:flex;align-items:center;gap:8px;font-size:12px;color:#9A6A1A;background:#FFF6E9;padding:9px 12px;border-radius:10px')}>{V.truckMiniIcon} {t.vehicles}</div>
-                    <div style={css('margin-top:12px;display:flex;justify-content:flex-end')}>
+                    <div style={css('margin-top:12px;display:flex;align-items:center;justify-content:space-between')}>
                       <Box tag="button" onClick={t.onClick} s="height:34px;padding:0 14px;border-radius:9px;border:1px solid #D9C8EC;background:#F6EEFA;color:#8B2FA8;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s" h="background:#8B2FA8;color:#fff;border-color:#8B2FA8">{V.infoIcon} ดูข้อมูล / ประวัติ</Box>
+                      <div style={css('display:flex;gap:6px')}>
+                        <Box tag="button" onClick={t.onEdit} title="แก้ไข" s="width:32px;height:32px;border-radius:9px;border:1px solid #E7E2EF;background:#fff;color:#6E687C;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="border-color:#B97FCE;background:#F6EEFA;color:#8B2FA8">{V.penIcon}</Box>
+                        <Box tag="button" onClick={t.onDelete} title="ลบ" s="width:32px;height:32px;border-radius:9px;border:1px solid #E7E2EF;background:#fff;color:#6E687C;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="border-color:#F2C4C4;background:#FBEAEA;color:#D5443F">{V.trashIcon}</Box>
+                      </div>
                     </div>
                   </Box>
                 ))}
+                </div>
               </div>
             )}
 
@@ -1565,6 +1614,52 @@ class App extends React.Component {
                   </div>
                   <Box tag="button" onClick={V.submitEditItem} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกการแก้ไข</Box>
                 </>)}
+                {V.editDataType==='team' && (<>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ชื่อชุดปฏิบัติงาน</label>
+                    <Box tag="input" value={V.editData.name||''} onChange={(e)=>V.setEditField('name',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>หัวหน้าชุด</label>
+                    <div style={css('position:relative')}>
+                      <Box tag="select" value={V.editData.leadId||''} onChange={(e)=>V.setEditField('leadId',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f={FIELD_FOCUS}>
+                        <option value="">— ไม่ระบุ —</option>
+                        {V.workerRows.map((w,i)=>(<option key={i} value={w.id}>{w.name} · {w.pos}</option>))}
+                      </Box>
+                      <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                    </div>
+                  </div>
+                  {V.workerRows.length>0 && (
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:9px')}>สมาชิกในชุด</label>
+                      <div style={css('display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding:2px')}>
+                        {V.workerRows.map((w,i)=>{
+                          const checked=(V.editData.memberIds||[]).includes(w.id);
+                          return (<label key={i} style={css('display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;border:1px solid '+(checked?'#C9AED9':'#ECEAF1')+';background:'+(checked?'#F6EEFA':'#fff')+';cursor:pointer;transition:all .15s')}>
+                            <input type="checkbox" checked={checked} onChange={()=>V.toggleEditMember(w.id)} style={css('width:16px;height:16px;accent-color:#8B2FA8;cursor:pointer;flex-shrink:0')} />
+                            <span style={css('font-size:13.5px;font-weight:'+(checked?'600':'400'))}>{w.name}</span>
+                            <span style={css('font-size:12px;color:#A79FB6;flex:1')}>{w.pos}</span>
+                          </label>);
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {V.vehicleRows.length>0 && (
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:9px')}>ยานพาหนะในชุด</label>
+                      <div style={css('display:flex;flex-wrap:wrap;gap:8px')}>
+                        {V.vehicleRows.map((v,i)=>{
+                          const checked=(V.editData.plates||[]).includes(v.plate);
+                          return (<label key={i} style={css('display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:10px;border:1px solid '+(checked?'#C9AED9':'#ECEAF1')+';background:'+(checked?'#F6EEFA':'#fff')+';cursor:pointer;transition:all .15s')}>
+                            <input type="checkbox" checked={checked} onChange={()=>V.toggleEditPlate(v.plate)} style={css('width:15px;height:15px;accent-color:#8B2FA8;cursor:pointer')} />
+                            <span style={css("font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:"+(checked?'600':'400'))}>{v.plate}</span>
+                          </label>);
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <Box tag="button" onClick={V.submitEditTeam} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกการแก้ไข</Box>
+                </>)}
               </div>
             </div>
           </div>
@@ -1672,6 +1767,53 @@ class App extends React.Component {
                     <Box tag="input" id="av_team" placeholder="เช่น ชุดปฏิบัติการที่ 1" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
                   </div>
                   <Box tag="button" onClick={V.submitAddVehicle} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกทะเบียนรถ</Box>
+                </>)}
+
+                {V.modalIsTeam && (<>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ชื่อชุดปฏิบัติงาน</label>
+                    <Box tag="input" value={V.teamForm.name||''} onChange={(e)=>V.setTeamForm('name',e.target.value)} placeholder="เช่น ชุดปฏิบัติการที่ 1" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>หัวหน้าชุด</label>
+                    <div style={css('position:relative')}>
+                      <Box tag="select" value={V.teamForm.leadId||''} onChange={(e)=>V.setTeamForm('leadId',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f={FIELD_FOCUS}>
+                        <option value="">— ไม่ระบุ —</option>
+                        {V.workerRows.map((w,i)=>(<option key={i} value={w.id}>{w.name} · {w.pos}</option>))}
+                      </Box>
+                      <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                    </div>
+                  </div>
+                  {V.workerRows.length>0 && (
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:9px')}>สมาชิกในชุด</label>
+                      <div style={css('display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding:2px')}>
+                        {V.workerRows.map((w,i)=>{
+                          const checked=V.teamForm.memberIds.includes(w.id);
+                          return (<label key={i} style={css('display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;border:1px solid '+(checked?'#C9AED9':'#ECEAF1')+';background:'+(checked?'#F6EEFA':'#fff')+';cursor:pointer;transition:all .15s')}>
+                            <input type="checkbox" checked={checked} onChange={()=>V.toggleTeamMember(w.id)} style={css('width:16px;height:16px;accent-color:#8B2FA8;cursor:pointer;flex-shrink:0')} />
+                            <span style={css('font-size:13.5px;font-weight:'+(checked?'600':'400'))}>{w.name}</span>
+                            <span style={css('font-size:12px;color:#A79FB6;flex:1')}>{w.pos}</span>
+                          </label>);
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {V.vehicleRows.length>0 && (
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:9px')}>ยานพาหนะในชุด</label>
+                      <div style={css('display:flex;flex-wrap:wrap;gap:8px')}>
+                        {V.vehicleRows.map((v,i)=>{
+                          const checked=V.teamForm.plates.includes(v.plate);
+                          return (<label key={i} style={css('display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:10px;border:1px solid '+(checked?'#C9AED9':'#ECEAF1')+';background:'+(checked?'#F6EEFA':'#fff')+';cursor:pointer;transition:all .15s')}>
+                            <input type="checkbox" checked={checked} onChange={()=>V.toggleTeamPlate(v.plate)} style={css('width:15px;height:15px;accent-color:#8B2FA8;cursor:pointer')} />
+                            <span style={css("font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:"+(checked?'600':'400'))}>{v.plate}</span>
+                          </label>);
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <Box tag="button" onClick={V.submitAddTeam} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกชุดปฏิบัติงาน</Box>
                 </>)}
 
               </div>
