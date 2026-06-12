@@ -83,6 +83,49 @@ function Box({ tag='div', s, h, f, children, onMouseEnter, onMouseLeave, onFocus
 const CARD = 'background:#fff;border:1px solid #ECEAF1;border-radius:18px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)';
 const FIELD_FOCUS = 'border-color:#B97FCE;background:#fff;box-shadow:0 0 0 4px rgba(139,47,168,.10)';
 
+// SearchSelect: dropdown ที่พิมพ์ค้นหาได้ (combobox)
+function SearchSelect({ value, options, onChange, placeholder, size }){
+  const [open,setOpen] = useState(false);
+  const [q,setQ] = useState('');
+  const ref = React.useRef(null);
+  const sel = options.find(o=>o.value===value);
+  const ql = q.trim().toLowerCase();
+  const filtered = ql ? options.filter(o=>o.label.toLowerCase().includes(ql)) : options;
+  const h = size==='sm' ? 44 : 46;
+  React.useEffect(()=>{
+    const onDoc=(e)=>{ if(ref.current && !ref.current.contains(e.target)){ setOpen(false); setQ(''); } };
+    document.addEventListener('mousedown',onDoc);
+    return ()=>document.removeEventListener('mousedown',onDoc);
+  },[]);
+  const fieldBase = 'width:100%;height:'+h+'px;border:1px solid '+(open?'#B97FCE':'#E7E2EF')+';border-radius:12px;background:'+(open?'#fff':'#F7F5FA')+';padding:0 38px 0 14px;font-size:14px;color:'+(sel?'#211A2E':'#A79FB6')+';cursor:pointer;display:flex;align-items:center;transition:all .16s;'+(open?'box-shadow:0 0 0 4px rgba(139,47,168,.10);':'');
+  return (
+    <div ref={ref} style={css('position:relative')}>
+      <div onClick={()=>{ setOpen(o=>!o); setQ(''); }} style={css(fieldBase)}>
+        <span style={css('flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{sel ? sel.label : (placeholder||'— เลือก —')}</span>
+      </div>
+      <span style={css('position:absolute;right:14px;top:'+(h/2)+'px;transform:translateY(-50%);color:#A79FB6;pointer-events:none;transition:transform .18s;'+(open?'transform:translateY(-50%) rotate(180deg);':''))}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      {open && (
+        <div style={css('position:absolute;left:0;right:0;top:'+(h+6)+'px;background:#fff;border:1px solid #EAE6F0;border-radius:13px;box-shadow:0 18px 50px rgba(33,26,46,.2);z-index:60;overflow:hidden;animation:popIn .14s ease')}>
+          <div style={css('padding:9px;border-bottom:1px solid #F0EDF5')}>
+            <Box tag="input" autoFocus value={q} onChange={(e)=>setQ(e.target.value)} placeholder="พิมพ์เพื่อค้นหา..."
+              s="width:100%;height:38px;border:1px solid #E7E2EF;border-radius:10px;background:#F7F5FA;padding:0 12px;font-size:13.5px" f={FIELD_FOCUS} />
+          </div>
+          <div style={css('max-height:240px;overflow-y:auto;padding:5px')}>
+            {filtered.length===0 && <div style={css('padding:14px;text-align:center;font-size:13px;color:#A79FB6')}>ไม่พบรายการ</div>}
+            {filtered.map((o,i)=>(
+              <Box key={i} onClick={()=>{ onChange(o.value); setOpen(false); setQ(''); }}
+                s={"padding:10px 12px;border-radius:9px;font-size:13.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"+(o.value===value?'background:#F3EAF8;color:#8B2FA8;font-weight:600;':'color:#3A3346;')}
+                h="background:#F6EEFA;color:#8B2FA8">{o.label}</Box>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Supabase client + db helpers ---------- */
 const CFG = window.PPE_CONFIG || {};
 const SB_READY = CFG.SUPABASE_URL && !CFG.SUPABASE_URL.startsWith('PASTE_') && CFG.SUPABASE_ANON_KEY && !CFG.SUPABASE_ANON_KEY.startsWith('PASTE_');
@@ -275,11 +318,13 @@ class App extends React.Component {
     editData: null,
     deleteConfirm: null,
     teamForm: { name:'', leadId:'', memberIds:[], plates:[] },
+    memberQ: '',
     draggingTeam: null,
     overTeam: null,
     toast: null,
     sigInk: false,
     issue: { kind:'individual', recipientId:'', lineItem:'', lineQty:1, lines:[], note:'' },
+    siItem: '',
     refSeq: 24,
     items: [
       { id:'i1', code:'PPE-001', name:'หมวกนิรภัย (Safety Helmet)', cat:'ศีรษะ', unit:'ใบ', qty:42, min:15, loc:'ชั้น A-1' },
@@ -448,7 +493,7 @@ class App extends React.Component {
     catch(e){ this.toast('บันทึก DB ไม่สำเร็จ',e.message,'danger'); }
     else this.toast('เพิ่มชุดสำเร็จ',name,'success');
   }
-  openEditTeam(t){ if(!this.requireAdmin()) return; this.setState({ editData:{ type:'team', id:t.id, name:t.name, leadId:t.leadId||'', memberIds:[...(t.memberIds||[])], plates:[...(t.plates||[])] } }); }
+  openEditTeam(t){ if(!this.requireAdmin()) return; this.setState({ memberQ:'', editData:{ type:'team', id:t.id, name:t.name, leadId:t.leadId||'', memberIds:[...(t.memberIds||[])], plates:[...(t.plates||[])] } }); }
   toggleEditMember(wid){ this.setState(s=>{ const m=s.editData.memberIds; return { editData:{ ...s.editData, memberIds:m.includes(wid)?m.filter(x=>x!==wid):[...m,wid] } }; }); }
   toggleEditPlate(plate){ this.setState(s=>{ const p=s.editData.plates; return { editData:{ ...s.editData, plates:p.includes(plate)?p.filter(x=>x!==plate):[...p,plate] } }; }); }
   // ---------- team reorder (drag & drop) ----------
@@ -599,14 +644,14 @@ class App extends React.Component {
   // ---------- stock in ----------
   async submitStockIn(){
     if(!this.requireAdmin()) return;
-    const id=this.val('si_item'); const qty=parseInt(this.val('si_qty'))||0; const lot=this.val('si_lot')||'-'; const by=this.val('si_by')||'รับเข้าคลัง';
+    const id=this.state.siItem; const qty=parseInt(this.val('si_qty'))||0; const lot=this.val('si_lot')||'-'; const by=this.val('si_by')||'รับเข้าคลัง';
     if(!id){ this.toast('เลือกอุปกรณ์','กรุณาเลือกรายการที่รับเข้า','warn'); return; }
     if(qty<1){ this.toast('จำนวนไม่ถูกต้อง','ระบุจำนวนรับเข้าอย่างน้อย 1','warn'); return; }
     const items=this.state.items.map(x=>x.id===id?{...x,qty:x.qty+qty}:x);
     const it=items.find(x=>x.id===id);
     const seq=this.state.movements.filter(m=>m.type==='in').length+41; const ref='RCV-'+String(seq).padStart(4,'0');
     const mv={ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'in', kind:null, item:it.name, qty, unit:it.unit, party:by, sub:lot, ref, date:this.thaiToday() };
-    this.setState({ items, movements:[mv, ...this.state.movements] });
+    this.setState({ items, movements:[mv, ...this.state.movements], siItem:'' });
     const el=document.getElementById('si_lot'); if(el) el.value=''; const el2=document.getElementById('si_by'); if(el2) el2.value='';
     if(SB_READY){
       try { await db.updateItemQty(id, it.qty); await db.insertMovements([mv]); }
@@ -620,7 +665,7 @@ class App extends React.Component {
   requireAdmin(){ if(!this.props.isAdmin){ this.toast('ต้องเข้าสู่ระบบก่อน','เฉพาะ จนท.คลัง เท่านั้นที่แก้ไขข้อมูลได้','warn'); return false; } return true; }
 
   // ---------- modals add ----------
-  openModal(t){ if(!this.requireAdmin()) return; this.setState({ modal:t, notifOpen:false }); }
+  openModal(t){ if(!this.requireAdmin()) return; this.setState({ modal:t, notifOpen:false, memberQ:'' }); }
   closeModal(){ this.setState({ modal:null }); }
   async submitAddItem(){
     const name=this.val('ai_name'); if(!name){ this.toast('กรอกชื่อ','กรุณาระบุชื่ออุปกรณ์','warn'); return; }
@@ -921,9 +966,14 @@ class App extends React.Component {
       recipientHead: is.kind==='individual'?'ผู้ปฏิบัติงานที่เบิก':'ชุดงานที่เบิก',
       recipientLabel: is.kind==='individual'?'ผู้ปฏิบัติงาน':'ชุดงาน',
       issueRecipientId:is.recipientId, onRecipient:(e)=>this.setIssue({recipientId:e.target.value}),
+      onRecipientVal:(val)=>this.setIssue({recipientId:val}),
       recipientOptions, recipientCard:rc, itemOptions,
+      leadOptions: S.workers.map(w=>({ value:w.id, label:w.name+(w.pos?(' · '+w.pos):'') })),
+      memberPool: S.workers.map(w=>({ id:w.id, name:w.name, pos:w.pos })),
+      memberQ:S.memberQ||'', setMemberQ:(v)=>this.setState({memberQ:v}),
+      siItem:S.siItem, onSiItemVal:(val)=>this.setState({siItem:val}),
       lineDraftItem:is.lineItem, lineDraftQty:is.lineQty,
-      onLineItem:(e)=>this.setIssue({lineItem:e.target.value}), onLineQty:(e)=>this.setIssue({lineQty:e.target.value}),
+      onLineItem:(e)=>this.setIssue({lineItem:e.target.value}), onLineItemVal:(val)=>this.setIssue({lineItem:val}), onLineQty:(e)=>this.setIssue({lineQty:e.target.value}),
       addLine:()=>this.addLine(), issueLines, hasLines:is.lines.length>0, noLines:is.lines.length===0, lineCount:is.lines.length,
       totalQty, ticketRecipient, issueRefStr:nextRef, issueDateStr:this.thaiToday(),
       sigRef:(el)=>{ if(el && el!==this._sigEl){ this._sigEl=el; requestAnimationFrame(()=>this.initSig(el)); } },
@@ -1176,13 +1226,7 @@ class App extends React.Component {
                     <div style={css(CARD+';padding:22px')}>
                       <div style={css('font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px')}>{V.recipientHeadIcon} {V.recipientHead}</div>
                       <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>{V.recipientLabel}</label>
-                      <div style={css('position:relative')}>
-                        <Box tag="select" value={V.issueRecipientId} onChange={V.onRecipient} s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 38px 0 14px;font-size:14px;color:#211A2E;appearance:none;cursor:pointer;transition:all .16s" f={FIELD_FOCUS}>
-                          <option value="">— เลือก{V.recipientLabel} —</option>
-                          {V.recipientOptions.map((o,i)=>(<option key={i} value={o.value}>{o.label}</option>))}
-                        </Box>
-                        <span style={css('position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
-                      </div>
+                      <SearchSelect value={V.issueRecipientId} options={V.recipientOptions} onChange={V.onRecipientVal} placeholder={'— เลือก'+V.recipientLabel+' —'} />
 
                       {V.recipientCard.has && (
                         <div style={css('margin-top:16px;padding:16px;border-radius:14px;background:linear-gradient(135deg,#FAF4FC,#F4ECF8);border:1px solid #EEDFF4;animation:popIn .2s ease')}>
@@ -1218,13 +1262,7 @@ class App extends React.Component {
                       <div style={css('display:flex;gap:10px;align-items:flex-end')}>
                         <div style={css('flex:1')}>
                           <label style={css('display:block;font-size:12px;color:#6E687C;margin-bottom:6px')}>รายการอุปกรณ์</label>
-                          <div style={css('position:relative')}>
-                            <Box tag="select" value={V.lineDraftItem} onChange={V.onLineItem} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 34px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f="border-color:#B97FCE;background:#fff">
-                              <option value="">— เลือกอุปกรณ์ —</option>
-                              {V.itemOptions.map((o,i)=>(<option key={i} value={o.value}>{o.label}</option>))}
-                            </Box>
-                            <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
-                          </div>
+                          <SearchSelect value={V.lineDraftItem} options={V.itemOptions} onChange={V.onLineItemVal} placeholder="— เลือกอุปกรณ์ —" size="sm" />
                         </div>
                         <div style={css('width:92px')}>
                           <label style={css('display:block;font-size:12px;color:#6E687C;margin-bottom:6px')}>จำนวน</label>
@@ -1305,12 +1343,7 @@ class App extends React.Component {
                   <div style={css('display:flex;flex-direction:column;gap:15px')}>
                     <div>
                       <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>รายการอุปกรณ์</label>
-                      <div style={css('position:relative')}>
-                        <Box tag="select" id="si_item" s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 38px 0 14px;font-size:14px;appearance:none;cursor:pointer" f="border-color:#B97FCE;background:#fff">
-                          {V.itemOptions.map((o,i)=>(<option key={i} value={o.value}>{o.label}</option>))}
-                        </Box>
-                        <span style={css('position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
-                      </div>
+                      <SearchSelect value={V.siItem} options={V.itemOptions} onChange={V.onSiItemVal} placeholder="— เลือกอุปกรณ์ —" />
                     </div>
                     <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:13px')}>
                       <div>
@@ -1755,24 +1788,19 @@ class App extends React.Component {
                   </div>
                   <div>
                     <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>หัวหน้าชุด</label>
-                    <div style={css('position:relative')}>
-                      <Box tag="select" value={V.editData.leadId||''} onChange={(e)=>V.setEditField('leadId',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f={FIELD_FOCUS}>
-                        <option value="">— ไม่ระบุ —</option>
-                        {V.workerRows.map((w,i)=>(<option key={i} value={w.id}>{w.name} · {w.pos}</option>))}
-                      </Box>
-                      <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
-                    </div>
+                    <SearchSelect value={V.editData.leadId||''} options={[{value:'',label:'— ไม่ระบุ —'}].concat(V.leadOptions)} onChange={(val)=>V.setEditField('leadId',val)} placeholder="— ไม่ระบุ —" size="sm" />
                   </div>
-                  {V.workerRows.length>0 && (
+                  {V.memberPool.length>0 && (
                     <div>
-                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:9px')}>สมาชิกในชุด</label>
-                      <div style={css('display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding:2px')}>
-                        {V.workerRows.map((w,i)=>{
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:9px')}>สมาชิกในชุด ({(V.editData.memberIds||[]).length} คน)</label>
+                      <Box tag="input" value={V.memberQ} onChange={(e)=>V.setMemberQ(e.target.value)} placeholder="พิมพ์ค้นหาชื่อสมาชิก..." s="width:100%;height:40px;border:1px solid #E7E2EF;border-radius:10px;background:#F7F5FA;padding:0 12px;font-size:13.5px;margin-bottom:8px" f={FIELD_FOCUS} />
+                      <div style={css('display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;padding:2px')}>
+                        {V.memberPool.filter(w=>!V.memberQ||(w.name+' '+(w.pos||'')).toLowerCase().includes(V.memberQ.toLowerCase())).map((w,i)=>{
                           const checked=(V.editData.memberIds||[]).includes(w.id);
                           return (<label key={i} style={css('display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;border:1px solid '+(checked?'#C9AED9':'#ECEAF1')+';background:'+(checked?'#F6EEFA':'#fff')+';cursor:pointer;transition:all .15s')}>
                             <input type="checkbox" checked={checked} onChange={()=>V.toggleEditMember(w.id)} style={css('width:16px;height:16px;accent-color:#8B2FA8;cursor:pointer;flex-shrink:0')} />
                             <span style={css('font-size:13.5px;font-weight:'+(checked?'600':'400'))}>{w.name}</span>
-                            <span style={css('font-size:12px;color:#A79FB6;flex:1')}>{w.pos}</span>
+                            <span style={css('font-size:12px;color:#A79FB6;flex:1;text-align:right')}>{w.pos}</span>
                           </label>);
                         })}
                       </div>
@@ -1910,24 +1938,19 @@ class App extends React.Component {
                   </div>
                   <div>
                     <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>หัวหน้าชุด</label>
-                    <div style={css('position:relative')}>
-                      <Box tag="select" value={V.teamForm.leadId||''} onChange={(e)=>V.setTeamForm('leadId',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f={FIELD_FOCUS}>
-                        <option value="">— ไม่ระบุ —</option>
-                        {V.workerRows.map((w,i)=>(<option key={i} value={w.id}>{w.name} · {w.pos}</option>))}
-                      </Box>
-                      <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
-                    </div>
+                    <SearchSelect value={V.teamForm.leadId||''} options={[{value:'',label:'— ไม่ระบุ —'}].concat(V.leadOptions)} onChange={(val)=>V.setTeamForm('leadId',val)} placeholder="— ไม่ระบุ —" size="sm" />
                   </div>
-                  {V.workerRows.length>0 && (
+                  {V.memberPool.length>0 && (
                     <div>
-                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:9px')}>สมาชิกในชุด</label>
-                      <div style={css('display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding:2px')}>
-                        {V.workerRows.map((w,i)=>{
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:9px')}>สมาชิกในชุด ({V.teamForm.memberIds.length} คน)</label>
+                      <Box tag="input" value={V.memberQ} onChange={(e)=>V.setMemberQ(e.target.value)} placeholder="พิมพ์ค้นหาชื่อสมาชิก..." s="width:100%;height:40px;border:1px solid #E7E2EF;border-radius:10px;background:#F7F5FA;padding:0 12px;font-size:13.5px;margin-bottom:8px" f={FIELD_FOCUS} />
+                      <div style={css('display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;padding:2px')}>
+                        {V.memberPool.filter(w=>!V.memberQ||(w.name+' '+(w.pos||'')).toLowerCase().includes(V.memberQ.toLowerCase())).map((w,i)=>{
                           const checked=V.teamForm.memberIds.includes(w.id);
                           return (<label key={i} style={css('display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;border:1px solid '+(checked?'#C9AED9':'#ECEAF1')+';background:'+(checked?'#F6EEFA':'#fff')+';cursor:pointer;transition:all .15s')}>
                             <input type="checkbox" checked={checked} onChange={()=>V.toggleTeamMember(w.id)} style={css('width:16px;height:16px;accent-color:#8B2FA8;cursor:pointer;flex-shrink:0')} />
                             <span style={css('font-size:13.5px;font-weight:'+(checked?'600':'400'))}>{w.name}</span>
-                            <span style={css('font-size:12px;color:#A79FB6;flex:1')}>{w.pos}</span>
+                            <span style={css('font-size:12px;color:#A79FB6;flex:1;text-align:right')}>{w.pos}</span>
                           </label>);
                         })}
                       </div>
