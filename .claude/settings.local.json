@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /tmp)",
+      "Bash(mkdir -p design_extract)",
+      "Bash(tar -xf design -C design_extract)",
+      "Bash(cd /tmp/design_extract/ppe-pay && echo \"=== PPE Betong.dc.html size ===\" && wc -l \"project/PPE Betong.dc.html\" && echo \"=== support.js size ===\" && wc -l project/support.js && echo \"=== chat1.md size ===\" && wc -l chats/chat1.md && echo \"=== screenshots ===\" && ls -la project/screenshots/)",
+      "mcp__Claude_Preview__preview_start",
+      "PowerShell($p = \\(Get-Command python -ErrorAction SilentlyContinue\\).Source; \"python: $p\"; try { & python --version } catch { \"py failed\" }; $n = \\(Get-Command node -ErrorAction SilentlyContinue\\).Source; \"node: $n\")",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}

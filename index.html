@@ -1,0 +1,1530 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PPE STOCK · กฟภ. อำเภอเบตง</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script>
+  // ============================================================
+  // Supabase config — paste your values from the Supabase Dashboard
+  //   Project Settings → API → URL  and  anon (public) key
+  // ============================================================
+  window.PPE_CONFIG = {
+    SUPABASE_URL: 'https://huuqoenihvdesrdozyeq.supabase.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1dXFvZW5paHZkZXNyZG96eWVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNjg0MjcsImV4cCI6MjA5Njg0NDQyN30.Wm6o3Bigif_l7DY7meCQ7cn1Ok7LyeT9A6GuGoh5T2Q'
+  };
+</script>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'IBM Plex Sans Thai',sans-serif;background:#F4F2F8;color:#211A2E;-webkit-font-smoothing:antialiased}
+  #root{min-height:100vh}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#D9D3E3;border-radius:20px;border:3px solid #F4F2F8}
+  ::-webkit-scrollbar-thumb:hover{background:#C3BAD3}
+  input,select,textarea,button{font-family:inherit}
+  input:focus,select:focus,textarea:focus{outline:none}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes popIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+  @keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes overlayIn{from{opacity:0}to{opacity:1}}
+  @keyframes modalIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pulseRing{0%{box-shadow:0 0 0 0 rgba(213,68,63,.35)}70%{box-shadow:0 0 0 8px rgba(213,68,63,0)}100%{box-shadow:0 0 0 0 rgba(213,68,63,0)}}
+  @keyframes barGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState } = React;
+
+/* ---------- style helpers ---------- */
+// Convert a CSS text string ("a:b;c:d") into a React style object (camelCased).
+function css(str){
+  if(!str) return {};
+  if(typeof str === 'object') return str;
+  const out = {};
+  str.split(';').forEach(part=>{
+    const i = part.indexOf(':');
+    if(i < 0) return;
+    const k = part.slice(0,i).trim();
+    if(!k) return;
+    const v = part.slice(i+1).trim();
+    out[k.replace(/-([a-z])/g,(_,c)=>c.toUpperCase())] = v;
+  });
+  return out;
+}
+
+// Box: renders any tag and supports the prototype's style-hover / style-focus.
+// s = base style (string or object), h = hover css string, f = focus css string.
+function Box({ tag='div', s, h, f, children, onMouseEnter, onMouseLeave, onFocus, onBlur, ...rest }){
+  const [hov,setHov] = useState(false);
+  const [foc,setFoc] = useState(false);
+  let style = { ...css(s) };
+  if(hov && h) style = { ...style, ...css(h) };
+  if(foc && f) style = { ...style, ...css(f) };
+  return React.createElement(tag, {
+    ...rest,
+    style,
+    onMouseEnter:(e)=>{ if(h) setHov(true); onMouseEnter && onMouseEnter(e); },
+    onMouseLeave:(e)=>{ if(h) setHov(false); onMouseLeave && onMouseLeave(e); },
+    onFocus:(e)=>{ if(f) setFoc(true); onFocus && onFocus(e); },
+    onBlur:(e)=>{ if(f) setFoc(false); onBlur && onBlur(e); },
+  }, children);
+}
+
+const CARD = 'background:#fff;border:1px solid #ECEAF1;border-radius:18px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)';
+const FIELD_FOCUS = 'border-color:#B97FCE;background:#fff;box-shadow:0 0 0 4px rgba(139,47,168,.10)';
+
+/* ---------- Supabase client + db helpers ---------- */
+const CFG = window.PPE_CONFIG || {};
+const SB_READY = CFG.SUPABASE_URL && !CFG.SUPABASE_URL.startsWith('PASTE_') && CFG.SUPABASE_ANON_KEY && !CFG.SUPABASE_ANON_KEY.startsWith('PASTE_');
+const sb = SB_READY ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+
+const db = {
+  async loadAll(){
+    const [items, workers, vehicles, teams, movements, meta] = await Promise.all([
+      sb.from('items').select('*').order('code'),
+      sb.from('workers').select('*').order('created_at'),
+      sb.from('vehicles').select('*').order('created_at'),
+      sb.from('teams').select('*').order('created_at'),
+      sb.from('movements').select('*').order('created_at',{ascending:false}),
+      sb.from('app_meta').select('*').eq('k','refSeq').single(),
+    ]);
+    for(const r of [items,workers,vehicles,teams,movements]){ if(r.error) throw r.error; }
+    return {
+      items:     (items.data||[]).map(r=>({ id:r.id, code:r.code, name:r.name, cat:r.cat, unit:r.unit, qty:r.qty, min:r.min_qty, loc:r.loc })),
+      workers:   workers.data||[],
+      vehicles:  vehicles.data||[],
+      teams:     (teams.data||[]).map(r=>({ id:r.id, name:r.name, leadId:r.lead_id, memberIds:r.member_ids||[], plates:r.plates||[] })),
+      movements: (movements.data||[]).map(r=>({ id:r.id, type:r.type, kind:r.kind, item:r.item, qty:r.qty, unit:r.unit, party:r.party, sub:r.sub, ref:r.ref, date:r.date_text })),
+      refSeq:    meta.data ? meta.data.v : 24,
+    };
+  },
+  async upsertItem(it){
+    const row = { id:it.id, code:it.code, name:it.name, cat:it.cat, unit:it.unit, qty:it.qty, min_qty:it.min, loc:it.loc };
+    const { error } = await sb.from('items').upsert(row); if(error) throw error;
+  },
+  async updateItemQty(id, qty){
+    const { error } = await sb.from('items').update({ qty }).eq('id', id); if(error) throw error;
+  },
+  async insertWorker(w){ const { error } = await sb.from('workers').insert(w); if(error) throw error; },
+  async insertVehicle(v){ const { error } = await sb.from('vehicles').insert(v); if(error) throw error; },
+  async insertMovements(rows){
+    const mapped = rows.map(m=>({ id:m.id, type:m.type, kind:m.kind||null, item:m.item, qty:m.qty, unit:m.unit, party:m.party, sub:m.sub, ref:m.ref, date_text:m.date }));
+    const { error } = await sb.from('movements').insert(mapped); if(error) throw error;
+  },
+  async setRefSeq(v){ const { error } = await sb.from('app_meta').upsert({ k:'refSeq', v }); if(error) throw error; },
+};
+window.__db = db;
+window.__sb = sb;
+
+/* ---------- Login screen ---------- */
+function LoginScreen({ onSignedIn }){
+  const [email,setEmail] = useState('');
+  const [pwd,setPwd] = useState('');
+  const [busy,setBusy] = useState(false);
+  const [err,setErr] = useState('');
+  const submit = async (e)=>{
+    e && e.preventDefault();
+    if(!sb){ setErr('ยังไม่ได้ตั้งค่า Supabase — แก้ค่า PPE_CONFIG ใน index.html ก่อน'); return; }
+    setBusy(true); setErr('');
+    const { error } = await sb.auth.signInWithPassword({ email, password:pwd });
+    setBusy(false);
+    if(error){ setErr('เข้าสู่ระบบไม่สำเร็จ: '+error.message); return; }
+    onSignedIn && onSignedIn();
+  };
+  return (
+    <div style={css('min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2B0F3E 0%,#3E1457 60%,#5A2080 100%);padding:24px')}>
+      <form onSubmit={submit} style={css('width:100%;max-width:380px;background:#fff;border-radius:20px;box-shadow:0 30px 80px rgba(33,18,46,.4);padding:32px 28px;display:flex;flex-direction:column;gap:14px;animation:popIn .3s ease')}>
+        <div style={css('display:flex;align-items:center;gap:12px;margin-bottom:6px')}>
+          <div style={css('width:44px;height:44px;border-radius:13px;background:linear-gradient(140deg,#B0309C,#7A23A8);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;box-shadow:0 6px 16px rgba(176,48,156,.4)')}>PE</div>
+          <div>
+            <div style={css('font-weight:700;font-size:16px;color:#211A2E')}>PPE STOCK</div>
+            <div style={css('font-size:11.5px;color:#8A8398')}>กฟภ. อำเภอเบตง</div>
+          </div>
+        </div>
+        <div style={css('font-size:14px;color:#6E687C;margin-bottom:4px')}>กรุณาเข้าสู่ระบบเพื่อใช้งาน</div>
+        <div>
+          <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:6px')}>อีเมล</label>
+          <Box tag="input" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="user@example.com" required s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+        </div>
+        <div>
+          <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:6px')}>รหัสผ่าน</label>
+          <Box tag="input" type="password" value={pwd} onChange={(e)=>setPwd(e.target.value)} placeholder="••••••••" required s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+        </div>
+        {err && <div style={css('font-size:12.5px;color:#D5443F;background:#FBEAEA;padding:9px 12px;border-radius:10px')}>{err}</div>}
+        <Box tag="button" type="submit" disabled={busy} s="height:46px;margin-top:6px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 22px rgba(139,47,168,.32)" h="transform:translateY(-1px);box-shadow:0 12px 28px rgba(139,47,168,.42)">
+          {busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+        </Box>
+        {!SB_READY && <div style={css('font-size:11.5px;color:#9A8FA8;text-align:center;margin-top:4px;line-height:1.5')}>โหมด DEMO — Supabase ยังไม่ได้ตั้งค่า<br/>ดูคำแนะนำที่ DEPLOY.md</div>}
+      </form>
+    </div>
+  );
+}
+
+/* ---------- Loading screen ---------- */
+function LoadingScreen({ msg }){
+  return (
+    <div style={css('min-height:100vh;display:flex;align-items:center;justify-content:center;background:#F4F2F8')}>
+      <div style={css('display:flex;flex-direction:column;align-items:center;gap:14px;color:#6E687C')}>
+        <div style={css('width:42px;height:42px;border:3px solid #E7E2EF;border-top-color:#8B2FA8;border-radius:50%;animation:spin 1s linear infinite')}></div>
+        <div style={css('font-size:13.5px')}>{msg||'กำลังโหลดข้อมูล...'}</div>
+      </div>
+      <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
+    </div>
+  );
+}
+
+/* ---------- Auth gate ---------- */
+function Root(){
+  const [phase,setPhase] = useState('checking');
+  React.useEffect(()=>{
+    if(!sb){ setPhase('login'); return; }
+    sb.auth.getSession().then(({data})=>{
+      setPhase(data.session ? 'app' : 'login');
+    });
+    const { data:sub } = sb.auth.onAuthStateChange((_evt, session)=>{
+      setPhase(session ? 'app' : 'login');
+    });
+    return ()=>sub.subscription.unsubscribe();
+  },[]);
+  if(phase==='checking') return <LoadingScreen msg="กำลังตรวจสอบสิทธิ์..." />;
+  if(phase==='login')    return <LoginScreen onSignedIn={()=>setPhase('app')} />;
+  return <App onSignOut={()=>sb && sb.auth.signOut()} />;
+}
+
+class App extends React.Component {
+  state = {
+    view: 'dashboard',
+    detail: null,
+    notifOpen: false,
+    kpiAnim: null,
+    catFilter: 'ทั้งหมด',
+    histFilter: 'all',
+    reportTab: 'stock',
+    globalSearch: '',
+    modal: null,
+    toast: null,
+    sigInk: false,
+    issue: { kind:'individual', recipientId:'', lineItem:'', lineQty:1, lines:[], note:'' },
+    refSeq: 24,
+    items: [
+      { id:'i1', code:'PPE-001', name:'หมวกนิรภัย (Safety Helmet)', cat:'ศีรษะ', unit:'ใบ', qty:42, min:15, loc:'ชั้น A-1' },
+      { id:'i2', code:'PPE-002', name:'แว่นตานิรภัย (Safety Glass)', cat:'ตา/ใบหน้า', unit:'อัน', qty:8, min:10, loc:'ชั้น A-2' },
+      { id:'i3', code:'PPE-003', name:'หน้ากากป้องกันอันตราย', cat:'ตา/ใบหน้า', unit:'อัน', qty:24, min:8, loc:'ชั้น A-2' },
+      { id:'i4', code:'PPE-004', name:'ถุงมือยางแรงสูงพร้อมถุงมือหนัง', cat:'มือ', unit:'คู่', qty:6, min:8, loc:'ชั้น B-1' },
+      { id:'i5', code:'PPE-005', name:'ถุงมือยางแรงต่ำพร้อมถุงมือหนัง', cat:'มือ', unit:'คู่', qty:15, min:8, loc:'ชั้น B-1' },
+      { id:'i6', code:'PPE-006', name:'ถุงมือปีนเสา', cat:'มือ', unit:'คู่', qty:0, min:6, loc:'ชั้น B-2' },
+      { id:'i7', code:'PPE-007', name:'ถุงมือผ้า', cat:'มือ', unit:'คู่', qty:120, min:30, loc:'ชั้น B-2' },
+      { id:'i8', code:'PPE-008', name:'เสื้อกั๊กสะท้อนแสง', cat:'ลำตัว', unit:'ตัว', qty:33, min:12, loc:'ชั้น C-1' },
+      { id:'i9', code:'PPE-009', name:'รองเท้าบู๊ทปีนเสา เบอร์ 38-46', cat:'เท้า', unit:'คู่', qty:18, min:6, loc:'ชั้น D-1' },
+      { id:'i10', code:'PPE-010', name:'รองเท้าบู๊ทยางกันไฟแรงสูง', cat:'เท้า', unit:'คู่', qty:4, min:5, loc:'ชั้น D-1' },
+      { id:'i11', code:'PPE-011', name:'เข็มขัดนิรภัย (Safety Belt)', cat:'กันตก', unit:'เส้น', qty:21, min:8, loc:'ชั้น E-1' },
+      { id:'i12', code:'PPE-012', name:'สายกันตก (Safety Strap)', cat:'กันตก', unit:'เส้น', qty:14, min:6, loc:'ชั้น E-1' },
+      { id:'i13', code:'PPE-013', name:'เข็มขัดนิรภัยชนิดเต็มตัว', cat:'กันตก', unit:'ชุด', qty:9, min:4, loc:'ชั้น E-2' },
+      { id:'i14', code:'PPE-014', name:'อุปกรณ์เชือกช่วยชีวิต (Lifelines)', cat:'กันตก', unit:'ชุด', qty:3, min:4, loc:'ชั้น E-2' },
+      { id:'i15', code:'PPE-015', name:'รองเท้านิรภัย (Safety Shoes) เบอร์ 38-46', cat:'เท้า', unit:'คู่', qty:27, min:10, loc:'ชั้น D-2' },
+      { id:'i16', code:'PPE-016', name:'เสื้อกันฝน', cat:'ลำตัว', unit:'ตัว', qty:40, min:12, loc:'ชั้น C-2' },
+      { id:'i17', code:'PPE-017', name:'กรวยจราจร', cat:'อื่นๆ', unit:'อัน', qty:56, min:20, loc:'ลานพัสดุ' },
+      { id:'i18', code:'PPE-018', name:'ป้ายเตือนเขตปฏิบัติงาน', cat:'อื่นๆ', unit:'อัน', qty:30, min:10, loc:'ลานพัสดุ' }
+    ],
+    workers: [
+      { id:'w1', name:'สมชาย ใจดี', pos:'หัวหน้าชุดปฏิบัติการ', dept:'แผนกปฏิบัติการและบำรุงรักษา' },
+      { id:'w2', name:'ประสิทธิ์ มั่นคง', pos:'พนักงานช่าง 4', dept:'แผนกปฏิบัติการและบำรุงรักษา' },
+      { id:'w3', name:'วิรัตน์ แซ่ลิ้ม', pos:'พนักงานช่าง 3', dept:'แผนกก่อสร้าง' },
+      { id:'w4', name:'อนุชา ทองแท้', pos:'พนักงานช่าง 3', dept:'แผนกก่อสร้าง' },
+      { id:'w5', name:'กิตติศักดิ์ ศรีสุข', pos:'พนักงานขับรถ', dept:'แผนกปฏิบัติการและบำรุงรักษา' },
+      { id:'w6', name:'ธนากร พงษ์ไพร', pos:'ผู้ช่วยช่าง', dept:'แผนกมิเตอร์' },
+      { id:'w7', name:'นพดล เกตุแก้ว', pos:'หัวหน้าชุดก่อสร้าง', dept:'แผนกก่อสร้าง' },
+      { id:'w8', name:'สุรชัย บุญมา', pos:'พนักงานขับรถ', dept:'แผนกก่อสร้าง' }
+    ],
+    vehicles: [
+      { id:'v1', plate:'ผก-1234 เบตง', type:'รถกระเช้าแก้ไฟ', team:'ชุดปฏิบัติการที่ 1' },
+      { id:'v2', plate:'ผก-5678 เบตง', type:'รถเครน', team:'ชุดก่อสร้างที่ 1' },
+      { id:'v3', plate:'ผง-2345 เบตง', type:'รถเครนเจาะ', team:'ชุดก่อสร้างที่ 1' },
+      { id:'v4', plate:'ผก-9012 เบตง', type:'รถกระเช้าแก้ไฟ', team:'ชุดปฏิบัติการที่ 2' },
+      { id:'v5', plate:'บท-7788 เบตง', type:'รถบรรทุก', team:'ชุดก่อสร้างที่ 1' }
+    ],
+    teams: [
+      { id:'t1', name:'ชุดปฏิบัติการที่ 1', leadId:'w1', memberIds:['w1','w2','w5'], plates:['ผก-1234 เบตง'] },
+      { id:'t2', name:'ชุดก่อสร้างที่ 1', leadId:'w7', memberIds:['w7','w3','w4','w8'], plates:['ผก-5678 เบตง','ผง-2345 เบตง'] },
+      { id:'t3', name:'ชุดปฏิบัติการที่ 2', leadId:'w2', memberIds:['w2','w6'], plates:['ผก-9012 เบตง'] }
+    ],
+    movements: [
+      { id:'m1', type:'out', kind:'team', item:'หมวกนิรภัย (Safety Helmet)', qty:4, unit:'ใบ', party:'ชุดปฏิบัติการที่ 1', sub:'รถ ผก-1234 เบตง', ref:'ISS-0023', date:'10 มิ.ย. 69' },
+      { id:'m2', type:'in', item:'ถุงมือผ้า', qty:50, unit:'คู่', party:'รับเข้าคลัง', sub:'PO-2569-013', ref:'RCV-0041', date:'10 มิ.ย. 69' },
+      { id:'m3', type:'out', kind:'individual', item:'รองเท้านิรภัย (Safety Shoes) เบอร์ 38-46', qty:1, unit:'คู่', party:'วิรัตน์ แซ่ลิ้ม', sub:'แผนกก่อสร้าง', ref:'ISS-0022', date:'9 มิ.ย. 69' },
+      { id:'m4', type:'out', kind:'team', item:'เข็มขัดนิรภัยชนิดเต็มตัว', qty:3, unit:'ชุด', party:'ชุดก่อสร้างที่ 1', sub:'รถ ผก-5678 เบตง', ref:'ISS-0021', date:'9 มิ.ย. 69' },
+      { id:'m5', type:'in', item:'หมวกนิรภัย (Safety Helmet)', qty:20, unit:'ใบ', party:'รับเข้าคลัง', sub:'PO-2569-012', ref:'RCV-0040', date:'8 มิ.ย. 69' },
+      { id:'m6', type:'out', kind:'individual', item:'แว่นตานิรภัย (Safety Glass)', qty:2, unit:'อัน', party:'ธนากร พงษ์ไพร', sub:'แผนกมิเตอร์', ref:'ISS-0020', date:'8 มิ.ย. 69' },
+      { id:'m7', type:'out', kind:'team', item:'เสื้อกั๊กสะท้อนแสง', qty:5, unit:'ตัว', party:'ชุดปฏิบัติการที่ 2', sub:'รถ ผก-9012 เบตง', ref:'ISS-0019', date:'7 มิ.ย. 69' },
+      { id:'m8', type:'in', item:'รองเท้านิรภัย (Safety Shoes) เบอร์ 38-46', qty:12, unit:'คู่', party:'รับเข้าคลัง', sub:'PO-2569-011', ref:'RCV-0039', date:'6 มิ.ย. 69' },
+      { id:'m9', type:'out', kind:'individual', item:'หมวกนิรภัย (Safety Helmet)', qty:1, unit:'ใบ', party:'อนุชา ทองแท้', sub:'แผนกก่อสร้าง', ref:'ISS-0018', date:'6 มิ.ย. 69' },
+      { id:'m10', type:'out', kind:'individual', item:'ถุงมือผ้า', qty:2, unit:'คู่', party:'สมชาย ใจดี', sub:'แผนกปฏิบัติการและบำรุงรักษา', ref:'ISS-0017', date:'5 มิ.ย. 69' },
+      { id:'m11', type:'out', kind:'individual', item:'แว่นตานิรภัย (Safety Glass)', qty:1, unit:'อัน', party:'สมชาย ใจดี', sub:'แผนกปฏิบัติการและบำรุงรักษา', ref:'ISS-0016', date:'3 มิ.ย. 69' },
+      { id:'m12', type:'out', kind:'individual', item:'ถุงมือผ้า', qty:2, unit:'คู่', party:'สมชาย ใจดี', sub:'แผนกปฏิบัติการและบำรุงรักษา', ref:'ISS-0015', date:'28 พ.ค. 69' },
+      { id:'m13', type:'out', kind:'individual', item:'หมวกนิรภัย (Safety Helmet)', qty:1, unit:'ใบ', party:'สมชาย ใจดี', sub:'แผนกปฏิบัติการและบำรุงรักษา', ref:'ISS-0014', date:'20 พ.ค. 69' },
+      { id:'m14', type:'out', kind:'individual', item:'ถุงมือยางแรงสูงพร้อมถุงมือหนัง', qty:1, unit:'คู่', party:'ประสิทธิ์ มั่นคง', sub:'แผนกปฏิบัติการและบำรุงรักษา', ref:'ISS-0013', date:'19 พ.ค. 69' },
+      { id:'m15', type:'out', kind:'individual', item:'ถุงมือผ้า', qty:3, unit:'คู่', party:'ประสิทธิ์ มั่นคง', sub:'แผนกปฏิบัติการและบำรุงรักษา', ref:'ISS-0012', date:'14 พ.ค. 69' },
+      { id:'m16', type:'out', kind:'individual', item:'รองเท้านิรภัย (Safety Shoes) เบอร์ 38-46', qty:1, unit:'คู่', party:'วิรัตน์ แซ่ลิ้ม', sub:'แผนกก่อสร้าง', ref:'ISS-0011', date:'12 พ.ค. 69' },
+      { id:'m17', type:'out', kind:'individual', item:'ถุงมือปีนเสา', qty:1, unit:'คู่', party:'วิรัตน์ แซ่ลิ้ม', sub:'แผนกก่อสร้าง', ref:'ISS-0010', date:'2 พ.ค. 69' },
+      { id:'m18', type:'out', kind:'individual', item:'แว่นตานิรภัย (Safety Glass)', qty:1, unit:'อัน', party:'ธนากร พงษ์ไพร', sub:'แผนกมิเตอร์', ref:'ISS-0009', date:'29 เม.ย. 69' },
+      { id:'m19', type:'out', kind:'individual', item:'เสื้อกั๊กสะท้อนแสง', qty:1, unit:'ตัว', party:'อนุชา ทองแท้', sub:'แผนกก่อสร้าง', ref:'ISS-0008', date:'24 เม.ย. 69' },
+      { id:'m20', type:'out', kind:'individual', item:'ถุงมือผ้า', qty:2, unit:'คู่', party:'อนุชา ทองแท้', sub:'แผนกก่อสร้าง', ref:'ISS-0007', date:'18 เม.ย. 69' }
+    ],
+    trend: [
+      { d:'จ', in:20, out:6 }, { d:'อ', in:0, out:9 }, { d:'พ', in:12, out:4 },
+      { d:'พฤ', in:50, out:7 }, { d:'ศ', in:0, out:12 }, { d:'ส', in:8, out:5 }, { d:'อา', in:0, out:3 }
+    ]
+  };
+
+  componentDidMount(){
+    if(SB_READY){ this.setState({ loading:true }); this.reloadFromDb(); }
+    else { this.animateKpis(); }
+  }
+  componentWillUnmount(){ cancelAnimationFrame(this._raf); clearTimeout(this._tt); }
+  async reloadFromDb(){
+    try {
+      const all = await db.loadAll();
+      this.setState({
+        items:all.items, workers:all.workers, vehicles:all.vehicles,
+        teams:all.teams, movements:all.movements, refSeq:all.refSeq, loading:false
+      }, ()=>this.animateKpis());
+    } catch(e){
+      this.setState({ loading:false });
+      this.toast('โหลดข้อมูลไม่สำเร็จ', e.message||'ตรวจสอบการเชื่อมต่อ', 'danger');
+    }
+  }
+
+  // ---------- helpers ----------
+  fmt(n){ return (n||0).toLocaleString('en-US'); }
+  cat(){ return { 'ศีรษะ':'#8B2FA8','ตา/ใบหน้า':'#3B74D6','มือ':'#1E9E6A','เท้า':'#D98A1F','ลำตัว':'#C0398A','กันตก':'#D5443F','อื่นๆ':'#6E687C' }; }
+  catColor(c){ return this.cat()[c] || '#6E687C'; }
+  status(it){
+    if(it.qty<=0) return { label:'หมด', color:'#D5443F', bg:'#FBEAEA' };
+    if(it.qty<=it.min) return { label:'ใกล้หมด', color:'#D98A1F', bg:'#FBF1E2' };
+    return { label:'ปกติ', color:'#1E9E6A', bg:'#E7F6EF' };
+  }
+  pct(it){ const cap=Math.max(it.min*3, it.qty, 1); return Math.max(4, Math.min(100, it.qty/cap*100)); }
+  thaiToday(){ const m=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']; const d=new Date(); return d.getDate()+' '+m[d.getMonth()]+' '+((d.getFullYear()+543)%100); }
+  lowItems(){ return this.state.items.filter(i=>i.qty<=i.min); }
+  issueSummary(name){
+    const moves=this.state.movements.filter(m=>m.type==='out' && m.party===name);
+    const map={};
+    moves.forEach(m=>{ if(!map[m.item]) map[m.item]={item:m.item, qty:0, times:0, unit:m.unit, last:m.date}; map[m.item].qty+=m.qty; map[m.item].times++; });
+    return { moves, count:moves.length, total:moves.reduce((a,b)=>a+b.qty,0), latest:moves[0]?moves[0].date:'—', agg:Object.values(map) };
+  }
+  openDetail(type,id){ this.setState({ detail:{type,id} }); }
+  closeDetail(){ this.setState({ detail:null }); }
+
+  // ---------- icons ----------
+  ic(name, size){
+    size = size || 20;
+    const P = (d)=>React.createElement('path',{d:d,key:d});
+    const C = (cx,cy,r)=>React.createElement('circle',{cx:cx,cy:cy,r:r,key:cx+'-'+cy+'-'+r});
+    const sets = {
+      dashboard:[P('M4 4h7v7H4z'),P('M13 4h7v5h-7z'),P('M13 13h7v7h-7z'),P('M4 15h7v5H4z')],
+      stockin:[P('M12 3v9'),P('M8 8l4 4 4-4'),P('M4 16v3h16v-3')],
+      issue:[P('M12 13V4'),P('M8 8l4-4 4 4'),P('M4 16v3h16v-3')],
+      inventory:[P('M12 3l8 4-8 4-8-4z'),P('M4 12l8 4 8-4'),P('M4 17l8 4 8-4')],
+      history:[C(12,12,9),P('M12 7v5l3 2')],
+      reports:[P('M5 20V11'),P('M12 20V5'),P('M19 20v-6'),P('M4 20h16')],
+      workers:[C(12,8,4),P('M4.5 20c0-4 3.5-6 7.5-6s7.5 2 7.5 6')],
+      vehicles:[P('M3 7h11v8H3z'),P('M14 10h4l3 3v2h-7z'),C(7,17.5,1.6),C(17,17.5,1.6)],
+      bell:[P('M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z'),P('M10 21h4')],
+      search:[C(11,11,7),P('M21 21l-4.3-4.3')],
+      plus:[P('M12 5v14'),P('M5 12h14')],
+      close:[P('M6 6l12 12'),P('M18 6L6 18')],
+      chevron:[P('M6 9l6 6 6-6')],
+      check:[P('M5 12.5l4.5 4.5L19 7.5')],
+      alert:[P('M12 3l9 16H3z'),P('M12 10v4'),P('M12 17.5v.2')],
+      person:[C(12,8,4),P('M4.5 20c0-4 3.5-6 7.5-6s7.5 2 7.5 6')],
+      team:[C(9,8,3.2),C(17,9,2.6),P('M3 20c0-3.5 2.7-5.5 6-5.5s6 2 6 5.5'),P('M16 14.5c2.5.2 5 1.8 5 5.5')],
+      box:[P('M12 3l8 4-8 4-8-4z'),P('M4 7v10l8 4 8-4V7'),P('M12 11v10')],
+      truck:[P('M3 7h11v8H3z'),P('M14 10h4l3 3v2h-7z'),C(7,17.5,1.6),C(17,17.5,1.6)],
+      pen:[P('M3 21l3.5-1L18 8.5 15.5 6 4 17.5z'),P('M14 7.5l2.5 2.5')],
+      export:[P('M12 3v11'),P('M8 7l4-4 4 4'),P('M5 16v3h14v-3')]
+    };
+    return React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.7,strokeLinecap:'round',strokeLinejoin:'round'}, sets[name]||[]);
+  }
+
+  // ---------- nav / actions ----------
+  nav(v){ this.setState({ view:v, notifOpen:false }); if(v==='dashboard') this.animateKpis(); const el=document.querySelector('[data-scroll]'); if(el) el.scrollTop=0; }
+  animateKpis(){
+    cancelAnimationFrame(this._raf);
+    const targets=this.kpiTargets(), start=performance.now(), dur=850;
+    const step=(t)=>{ const p=Math.min(1,(t-start)/dur), e=1-Math.pow(1-p,3);
+      this.setState({ kpiAnim: targets.map(v=>Math.round(v*e)) });
+      if(p<1) this._raf=requestAnimationFrame(step);
+    };
+    this._raf=requestAnimationFrame(step);
+  }
+  kpiTargets(){
+    const its=this.state.items;
+    const sumQty=its.reduce((a,b)=>a+b.qty,0);
+    const out=this.state.movements.filter(m=>m.type==='out').length;
+    const low=this.lowItems().length;
+    return [its.length, sumQty, out, low];
+  }
+  toast(title,msg,type){
+    this.setState({ toast:{ title, msg, type:type||'success' } });
+    clearTimeout(this._tt);
+    this._tt=setTimeout(()=>this.setState({toast:null}), 2800);
+  }
+
+  // ---------- issue ----------
+  setIssue(p){ this.setState(s=>({ issue:{...s.issue, ...p} })); }
+  setKind(k){ this.setIssue({ kind:k, recipientId:'' }); }
+  addLine(){
+    const is=this.state.issue;
+    if(!is.lineItem){ this.toast('เลือกอุปกรณ์ก่อน','กรุณาเลือกรายการอุปกรณ์ที่ต้องการเบิก','warn'); return; }
+    const qty=parseInt(is.lineQty)||0;
+    if(qty<1){ this.toast('จำนวนไม่ถูกต้อง','ระบุจำนวนอย่างน้อย 1','warn'); return; }
+    const lines=is.lines.slice();
+    const ex=lines.find(l=>l.itemId===is.lineItem);
+    if(ex) ex.qty+=qty; else lines.push({ itemId:is.lineItem, qty });
+    this.setIssue({ lines, lineItem:'', lineQty:1 });
+  }
+  removeLine(i){ const lines=this.state.issue.lines.slice(); lines.splice(i,1); this.setIssue({ lines }); }
+  initSig(c){
+    const ctx=c.getContext('2d'); const r=c.getBoundingClientRect();
+    c.width=r.width||300; c.height=r.height||120;
+    ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#2A2138';
+    let drawing=false, last=null;
+    const pos=(e)=>{ const b=c.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return { x:t.clientX-b.left, y:t.clientY-b.top }; };
+    const down=(e)=>{ drawing=true; last=pos(e); e.preventDefault(); };
+    const move=(e)=>{ if(!drawing) return; const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; if(!this.state.sigInk) this.setState({sigInk:true}); e.preventDefault(); };
+    const up=()=>{ drawing=false; };
+    c.addEventListener('mousedown',down); c.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+    c.addEventListener('touchstart',down,{passive:false}); c.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
+    this._sigCtx=ctx; this._sigCanvas=c;
+  }
+  clearSig(){ if(this._sigCtx&&this._sigCanvas) this._sigCtx.clearRect(0,0,this._sigCanvas.width,this._sigCanvas.height); this.setState({sigInk:false}); }
+  async submitIssue(){
+    const is=this.state.issue;
+    if(!is.recipientId){ this.toast('ยังไม่ได้เลือกผู้รับ', is.kind==='individual'?'กรุณาเลือกผู้ปฏิบัติงาน':'กรุณาเลือกชุดงาน','warn'); return; }
+    if(!is.lines.length){ this.toast('ยังไม่มีรายการ','กรุณาเพิ่มอุปกรณ์ที่ต้องการเบิก','warn'); return; }
+    if(!this.state.sigInk){ this.toast('ยังไม่มีลายเซ็น','กรุณาให้ผู้รับเซ็นชื่อรับของ','warn'); return; }
+    const items=this.state.items.map(x=>({...x}));
+    for(const l of is.lines){ const it=items.find(x=>x.id===l.itemId); if(it && l.qty>it.qty){ this.toast('สต็อกไม่พอ', it.name+' คงเหลือ '+it.qty+' '+it.unit,'danger'); return; } }
+    let party='', sub='';
+    if(is.kind==='individual'){ const w=this.state.workers.find(x=>x.id===is.recipientId); party=w.name; sub=w.dept; }
+    else { const t=this.state.teams.find(x=>x.id===is.recipientId); party=t.name; sub='รถ '+(t.plates.join(', ')||'-'); }
+    const seq=this.state.refSeq+1; const ref='ISS-'+String(seq).padStart(4,'0'); const date=this.thaiToday();
+    const newMoves=[];
+    const movedIds=[];
+    for(const l of is.lines){ const it=items.find(x=>x.id===l.itemId); it.qty-=l.qty; movedIds.push(l.itemId);
+      newMoves.push({ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'out', kind:is.kind, item:it.name, qty:l.qty, unit:it.unit, party, sub, ref, date }); }
+    this.setState({ items, movements:[...newMoves, ...this.state.movements], refSeq:seq,
+      issue:{ kind:is.kind, recipientId:'', lineItem:'', lineQty:1, lines:[], note:'' }, sigInk:false });
+    this.clearSig();
+    if(SB_READY){
+      try {
+        await Promise.all(movedIds.map(id=>{ const it=items.find(x=>x.id===id); return db.updateItemQty(id, it.qty); }));
+        await db.insertMovements(newMoves);
+        await db.setRefSeq(seq);
+      } catch(e){ this.toast('บันทึกลง DB ไม่สำเร็จ', e.message||'', 'danger'); return; }
+    }
+    this.toast('เบิกจ่ายสำเร็จ', ref+' · '+party+' · '+is.lines.reduce((a,b)=>a+b.qty,0)+' ชิ้น','success');
+  }
+
+  // ---------- stock in ----------
+  async submitStockIn(){
+    const id=this.val('si_item'); const qty=parseInt(this.val('si_qty'))||0; const lot=this.val('si_lot')||'-'; const by=this.val('si_by')||'รับเข้าคลัง';
+    if(!id){ this.toast('เลือกอุปกรณ์','กรุณาเลือกรายการที่รับเข้า','warn'); return; }
+    if(qty<1){ this.toast('จำนวนไม่ถูกต้อง','ระบุจำนวนรับเข้าอย่างน้อย 1','warn'); return; }
+    const items=this.state.items.map(x=>x.id===id?{...x,qty:x.qty+qty}:x);
+    const it=items.find(x=>x.id===id);
+    const seq=this.state.movements.filter(m=>m.type==='in').length+41; const ref='RCV-'+String(seq).padStart(4,'0');
+    const mv={ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'in', kind:null, item:it.name, qty, unit:it.unit, party:by, sub:lot, ref, date:this.thaiToday() };
+    this.setState({ items, movements:[mv, ...this.state.movements] });
+    const el=document.getElementById('si_lot'); if(el) el.value=''; const el2=document.getElementById('si_by'); if(el2) el2.value='';
+    if(SB_READY){
+      try { await db.updateItemQty(id, it.qty); await db.insertMovements([mv]); }
+      catch(e){ this.toast('บันทึกลง DB ไม่สำเร็จ', e.message||'', 'danger'); return; }
+    }
+    this.toast('รับเข้าสำเร็จ', it.name+' +'+qty+' '+it.unit,'success');
+  }
+  val(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+
+  // ---------- modals add ----------
+  openModal(t){ this.setState({ modal:t, notifOpen:false }); }
+  closeModal(){ this.setState({ modal:null }); }
+  async submitAddItem(){
+    const name=this.val('ai_name'); if(!name){ this.toast('กรอกชื่อ','กรุณาระบุชื่ออุปกรณ์','warn'); return; }
+    const cat=this.val('ai_cat')||'อื่นๆ', unit=this.val('ai_unit')||'ชิ้น';
+    const qty=parseInt(this.val('ai_qty'))||0, min=parseInt(this.val('ai_min'))||0, loc=this.val('ai_loc')||'-';
+    const code='PPE-'+String(this.state.items.length+1).padStart(3,'0');
+    const item={ id:'i'+Date.now()+Math.floor(Math.random()*1e6), code, name, cat, unit, qty, min, loc };
+    const moves = qty>0 ? [{ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'in', kind:null, item:name, qty, unit, party:'ตั้งต้นรายการใหม่', sub:code, ref:'RCV-NEW', date:this.thaiToday() }] : [];
+    this.setState({ items:[item, ...this.state.items], movements:[...moves, ...this.state.movements], modal:null });
+    if(SB_READY){
+      try { await db.upsertItem(item); if(moves.length) await db.insertMovements(moves); }
+      catch(e){ this.toast('บันทึกลง DB ไม่สำเร็จ', e.message||'', 'danger'); return; }
+    }
+    this.toast('เพิ่มรายการสำเร็จ', code+' · '+name,'success');
+  }
+  async submitAddWorker(){
+    const name=this.val('aw_name'); if(!name){ this.toast('กรอกชื่อ','กรุณาระบุชื่อ-สกุล','warn'); return; }
+    const pos=this.val('aw_pos')||'พนักงาน', dept=this.val('aw_dept')||'-';
+    const w={ id:'w'+Date.now()+Math.floor(Math.random()*1e6), name, pos, dept };
+    this.setState({ workers:[w, ...this.state.workers], modal:null });
+    if(SB_READY){
+      try { await db.insertWorker(w); }
+      catch(e){ this.toast('บันทึกลง DB ไม่สำเร็จ', e.message||'', 'danger'); return; }
+    }
+    this.toast('เพิ่มผู้ปฏิบัติงานสำเร็จ', name+' · '+pos,'success');
+  }
+  async submitAddVehicle(){
+    const plate=this.val('av_plate'); if(!plate){ this.toast('กรอกทะเบียน','กรุณาระบุทะเบียนรถ','warn'); return; }
+    const type=this.val('av_type')||'-', team=this.val('av_team')||'-';
+    const v={ id:'v'+Date.now()+Math.floor(Math.random()*1e6), plate, type, team };
+    this.setState({ vehicles:[v, ...this.state.vehicles], modal:null });
+    if(SB_READY){
+      try { await db.insertVehicle(v); }
+      catch(e){ this.toast('บันทึกลง DB ไม่สำเร็จ', e.message||'', 'danger'); return; }
+    }
+    this.toast('เพิ่มทะเบียนรถสำเร็จ', plate+' · '+type,'success');
+  }
+
+  // ---------- charts ----------
+  buildTrend(){
+    const tr=this.state.trend; const max=Math.max(1, ...tr.map(d=>Math.max(d.in,d.out)));
+    const bars=tr.map((d,i)=>React.createElement('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:8}},
+      React.createElement('div',{style:{flex:1,width:'100%',display:'flex',alignItems:'flex-end',justifyContent:'center',gap:5}},
+        React.createElement('div',{style:{width:13,height:Math.max(3,d.in/max*100)+'%',background:'linear-gradient(180deg,#A24FC2,#8B2FA8)',borderRadius:'5px 5px 0 0',transformOrigin:'bottom',animation:'barGrow .6s ease '+(i*0.05)+'s both'}}),
+        React.createElement('div',{style:{width:13,height:Math.max(3,d.out/max*100)+'%',background:'linear-gradient(180deg,#EDB05A,#E0902A)',borderRadius:'5px 5px 0 0',transformOrigin:'bottom',animation:'barGrow .6s ease '+(i*0.05+0.08)+'s both'}})
+      ),
+      React.createElement('span',{style:{fontSize:11.5,color:'#9A8FA8'}},d.d)
+    ));
+    return React.createElement('div',{style:{height:200,display:'flex',gap:6,alignItems:'stretch',marginTop:14}},bars);
+  }
+  buildDonut(){
+    const its=this.state.items; const out=its.filter(i=>i.qty<=0).length; const low=its.filter(i=>i.qty>0&&i.qty<=i.min).length; const ok=its.length-out-low;
+    const total=its.length||1; const a=ok/total*360, b=a+low/total*360;
+    const bg='conic-gradient(#1E9E6A 0deg '+a+'deg, #E0902A '+a+'deg '+b+'deg, #D5443F '+b+'deg 360deg)';
+    return React.createElement('div',{style:{width:148,height:148,borderRadius:'50%',background:bg,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 6px 20px rgba(33,26,46,.08)'}},
+      React.createElement('div',{style:{width:98,height:98,borderRadius:'50%',background:'#fff',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
+        React.createElement('div',{style:{fontFamily:"'IBM Plex Mono',monospace",fontSize:26,fontWeight:600,color:'#211A2E',lineHeight:1}},its.length),
+        React.createElement('div',{style:{fontSize:11,color:'#9A8FA8',marginTop:3}},'รายการ')
+      )
+    );
+  }
+
+  renderVals(){
+    const S=this.state, I=(n,s)=>this.ic(n,s);
+    const targets=this.kpiTargets(); const c=S.kpiAnim||[0,0,0,0];
+    const low=this.lowItems(); const lowCount=low.length;
+
+    const mk=(key,label,icon,badge)=>{
+      const active=S.view===key;
+      return { label, icon:I(icon), onClick:()=>this.nav(key),
+        rowStyle:{ display:'flex',alignItems:'center',gap:11,padding:'9px 12px',borderRadius:11,cursor:'pointer',fontSize:14,fontWeight:500,transition:'all .18s',
+          color: active?'#fff':'rgba(255,255,255,.62)',
+          background: active?'linear-gradient(100deg,rgba(255,255,255,.18),rgba(255,255,255,.05))':'transparent',
+          boxShadow: active?'inset 0 0 0 1px rgba(255,255,255,.10)':'none' },
+        showBadge: !!badge, badge,
+        badgeStyle:{ fontSize:11,fontWeight:600,background:'#D5443F',color:'#fff',minWidth:20,height:20,borderRadius:20,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 6px' } };
+    };
+    const navGroups=[
+      { label:'ภาพรวม', items:[ mk('dashboard','แดชบอร์ด','dashboard'), mk('issue','จ่ายออก / เบิกจ่าย','issue'), mk('stockin','รับเข้า','stockin') ] },
+      { label:'คลังพัสดุ', items:[ mk('inventory','อุปกรณ์คงเหลือ','inventory', lowCount||null), mk('history','ประวัติการเบิกจ่าย','history') ] },
+      { label:'รายงาน', items:[ mk('reports','รายงาน','reports') ] },
+      { label:'ทะเบียน', items:[ mk('workers','ผู้ปฏิบัติงาน','workers'), mk('teams','ชุดปฏิบัติงาน','team'), mk('vehicles','ทะเบียนรถ','vehicles') ] }
+    ];
+
+    const titles={ dashboard:['แดชบอร์ดภาพรวม','สรุปสถานะคลัง PPE การไฟฟ้าส่วนภูมิภาคอำเภอเบตง','dashboard'],
+      issue:['จ่ายออก / เบิกจ่าย PPE','บันทึกการเบิกอุปกรณ์รายบุคคลและประจำชุดงาน','issue'],
+      stockin:['รับเข้าคลัง','บันทึกการรับอุปกรณ์เข้าสต็อก','stockin'],
+      inventory:['อุปกรณ์คงเหลือ','ตรวจสอบระดับคงเหลือและจุดจัดเก็บ','inventory'],
+      history:['ประวัติการเบิกจ่าย','รายการเคลื่อนไหวรับเข้า–จ่ายออกทั้งหมด','history'],
+      reports:['รายงาน','สรุปสินค้าคงเหลือและการเคลื่อนไหว','reports'],
+      workers:['ทะเบียนผู้ปฏิบัติงาน','คลิกรายชื่อเพื่อดูประวัติการเบิกของแต่ละคน','workers'],
+      teams:['ชุดปฏิบัติงาน','ยอดเบิกสะสมรายชุด — คลิกเพื่อดูรายละเอียด','team'],
+      vehicles:['ทะเบียนรถ','ยานพาหนะและชุดงานที่สังกัด','vehicles'] };
+    const tt=titles[S.view]||titles.dashboard;
+
+    const tint=(bg,col)=>({width:38,height:38,borderRadius:11,background:bg,color:col,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0});
+    const muted={fontSize:12.5,color:'#9A8FA8'};
+    const kpis=[
+      { label:'รายการ PPE ทั้งหมด', value:this.fmt(c[0]), sub:'7 หมวดหมู่อุปกรณ์', subStyle:muted, icon:I('inventory'), iconWrap:tint('#F3EAF8','#8B2FA8') },
+      { label:'คงเหลือรวม (ชิ้น)', value:this.fmt(c[1]), sub:'อัปเดตล่าสุดวันนี้', subStyle:muted, icon:I('box'), iconWrap:tint('#E9F0FC','#3B74D6') },
+      { label:'รายการเบิกออก', value:this.fmt(c[2])+' ครั้ง', sub:'สะสมในระบบ', subStyle:muted, icon:I('issue'), iconWrap:tint('#E7F6EF','#1E9E6A') },
+      { label:'แจ้งเตือนสต็อกต่ำ', value:this.fmt(c[3])+' รายการ', sub: lowCount?'ต้องเติมด่วน':'อยู่ในเกณฑ์ปกติ', subStyle:{fontSize:12.5,fontWeight:600,color:lowCount?'#D5443F':'#1E9E6A'}, icon:I('alert'), iconWrap:tint('#FBEAEA','#D5443F') }
+    ];
+
+    const lowStockView=low.slice(0,5).map(it=>{ const st=this.status(it);
+      return { name:it.name, qty:it.qty, min:it.min,
+        statusLabel:st.label, statusStyle:{fontSize:11,fontWeight:600,color:st.color,background:st.bg,padding:'3px 9px',borderRadius:20,whiteSpace:'nowrap'},
+        fillStyle:{height:'100%',width:this.pct(it)+'%',background:st.color,borderRadius:20,transition:'width .6s ease'} };
+    });
+
+    const recentView=S.movements.slice(0,6).map(m=>{ const isIn=m.type==='in';
+      return { title:m.item, sub:m.party+' · '+m.ref, date:m.date,
+        icon:I(isIn?'stockin':'issue',16),
+        iconWrap:{width:34,height:34,borderRadius:10,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:isIn?'#E7F6EF':'#F3EAF8',color:isIn?'#1E9E6A':'#8B2FA8'},
+        qty:(isIn?'+':'-')+m.qty+' '+m.unit,
+        qtyStyle:{fontFamily:"'IBM Plex Mono',monospace",fontSize:13.5,fontWeight:600,color:isIn?'#1E9E6A':'#8B2FA8'} };
+    });
+
+    const itemMatches=(it)=>{ const q=S.globalSearch.trim(); if(q && !(it.name+it.code+it.loc).toLowerCase().includes(q.toLowerCase())) return false; if(S.catFilter!=='ทั้งหมด' && it.cat!==S.catFilter) return false; return true; };
+    const invRows=S.items.filter(itemMatches).map(it=>{ const st=this.status(it), col=this.catColor(it.cat);
+      return { code:it.code, name:it.name, unit:it.unit, min:it.min, loc:it.loc, qty:this.fmt(it.qty), cat:it.cat,
+        catStyle:{fontSize:11.5,fontWeight:600,color:col,background:col+'1A',padding:'4px 10px',borderRadius:8,justifySelf:'start',whiteSpace:'nowrap'},
+        statusLabel:st.label, statusStyle:{fontSize:11.5,fontWeight:600,color:st.color,background:st.bg,padding:'4px 10px',borderRadius:20,whiteSpace:'nowrap'},
+        fillStyle:{height:'100%',width:this.pct(it)+'%',background:st.color,borderRadius:20,transition:'width .5s ease'} };
+    });
+    const cats=['ทั้งหมด','ศีรษะ','ตา/ใบหน้า','มือ','เท้า','ลำตัว','กันตก','อื่นๆ'];
+    const catFilters=cats.map(ct=>{ const active=S.catFilter===ct;
+      return { label:ct, onClick:()=>this.setState({catFilter:ct}),
+        style:{height:34,padding:'0 15px',borderRadius:10,border:'1px solid '+(active?'#8B2FA8':'#E7E2EF'),background:active?'#8B2FA8':'#fff',color:active?'#fff':'#6E687C',fontSize:13,fontWeight:500,cursor:'pointer',transition:'all .15s'} };
+    });
+
+    const histFilters=[['all','ทั้งหมด'],['out','จ่ายออก'],['in','รับเข้า']].map(([k,l])=>{ const active=S.histFilter===k;
+      return { label:l, onClick:()=>this.setState({histFilter:k}),
+        style:{height:36,padding:'0 18px',borderRadius:10,border:'1px solid '+(active?'#8B2FA8':'#E7E2EF'),background:active?'#8B2FA8':'#fff',color:active?'#fff':'#6E687C',fontSize:13.5,fontWeight:500,cursor:'pointer',transition:'all .15s'} };
+    });
+    const histRows=S.movements.filter(m=>S.histFilter==='all'||m.type===S.histFilter).map(m=>{ const isIn=m.type==='in';
+      return { date:m.date, item:m.item, party:m.party, sub:m.sub, ref:m.ref,
+        typeIcon:I(isIn?'stockin':'issue',13), typeLabel:isIn?'รับเข้า':'จ่ายออก',
+        typeStyle:{display:'inline-flex',alignItems:'center',gap:5,fontSize:12,fontWeight:600,color:isIn?'#1E9E6A':'#8B2FA8',background:isIn?'#E7F6EF':'#F3EAF8',padding:'4px 10px',borderRadius:20,justifySelf:'start',whiteSpace:'nowrap'},
+        qtyText:(isIn?'+':'-')+m.qty+' '+m.unit,
+        qtyStyle:{textAlign:'center',fontFamily:"'IBM Plex Mono',monospace",fontSize:13.5,fontWeight:600,color:isIn?'#1E9E6A':'#8B2FA8'} };
+    });
+
+    const its=S.items; const okN=its.filter(i=>i.qty>i.min).length, lowN=its.filter(i=>i.qty>0&&i.qty<=i.min).length, outN=its.filter(i=>i.qty<=0).length;
+    const inQty=S.movements.filter(m=>m.type==='in').reduce((a,b)=>a+b.qty,0);
+    const outQty=S.movements.filter(m=>m.type==='out').reduce((a,b)=>a+b.qty,0);
+    const reportIsStock=S.reportTab==='stock';
+    const bigVal=(col)=>({fontFamily:"'IBM Plex Mono',monospace",fontSize:26,fontWeight:600,color:col||'#211A2E',letterSpacing:'-.5px'});
+    const reportStats = reportIsStock
+      ? [ {label:'รายการทั้งหมด',value:its.length,valueStyle:bigVal()},{label:'สถานะปกติ',value:okN,valueStyle:bigVal('#1E9E6A')},{label:'ใกล้หมด',value:lowN,valueStyle:bigVal('#D98A1F')},{label:'หมดสต็อก',value:outN,valueStyle:bigVal('#D5443F')} ]
+      : [ {label:'รับเข้ารวม (ชิ้น)',value:this.fmt(inQty),valueStyle:bigVal('#1E9E6A')},{label:'จ่ายออกรวม (ชิ้น)',value:this.fmt(outQty),valueStyle:bigVal('#8B2FA8')},{label:'จำนวนครั้ง',value:S.movements.length,valueStyle:bigVal()},{label:'คงเหลือสุทธิ',value:this.fmt(inQty-outQty),valueStyle:bigVal('#3B74D6')} ];
+    const catNames=['ศีรษะ','ตา/ใบหน้า','มือ','เท้า','ลำตัว','กันตก','อื่นๆ'];
+    const catReport=catNames.map(cn=>{ const arr=its.filter(i=>i.cat===cn); const lw=arr.filter(i=>i.qty<=i.min).length; const col=this.catColor(cn);
+      return { name:cn, items:arr.length, qty:this.fmt(arr.reduce((a,b)=>a+b.qty,0)),
+        dotStyle:{width:11,height:11,borderRadius:3,background:col,display:'inline-block',flexShrink:0},
+        lowBadge: lw>0 ? React.createElement('span',{style:{fontSize:11.5,fontWeight:600,color:'#D98A1F',background:'#FBF1E2',padding:'3px 10px',borderRadius:20}}, lw+' รายการ') : React.createElement('span',{style:{fontSize:12,color:'#1E9E6A'}},'—') };
+    }).filter(c=>c.items>0);
+    const tabStyle=(active)=>({height:38,padding:'0 18px',borderRadius:10,border:'none',background:active?'#8B2FA8':'transparent',color:active?'#fff':'#6E687C',fontSize:13.5,fontWeight:600,cursor:'pointer',transition:'all .15s'});
+
+    const donutLegend=[
+      {label:'สถานะปกติ',count:okN,dotStyle:{width:11,height:11,borderRadius:3,background:'#1E9E6A',display:'inline-block'}},
+      {label:'ใกล้หมด',count:lowN,dotStyle:{width:11,height:11,borderRadius:3,background:'#E0902A',display:'inline-block'}},
+      {label:'หมดสต็อก',count:outN,dotStyle:{width:11,height:11,borderRadius:3,background:'#D5443F',display:'inline-block'}}
+    ];
+
+    const av=(n)=>n.trim().charAt(0);
+    const workerRows=S.workers.map(w=>{ const sm=this.issueSummary(w.name);
+      return { name:w.name, pos:w.pos, dept:w.dept, avatar:av(w.name), last:sm.latest, count:sm.count, onClick:()=>this.openDetail('worker',w.id) }; });
+    const teamRows=S.teams.map(t=>{ const sm=this.issueSummary(t.name); const lead=S.workers.find(x=>x.id===t.leadId);
+      return { name:t.name, lead:lead?lead.name:'-', memberCount:t.memberIds.length, vehicles:t.plates.join(', ')||'-',
+        total:this.fmt(sm.total), count:sm.count, latest:sm.latest, onClick:()=>this.openDetail('team',t.id) }; });
+    let dt={ open:false, agg:[], moves:[], members:[], vehicles:[] };
+    if(S.detail){
+      const build=(name,extra)=>{ const sm=this.issueSummary(name);
+        return Object.assign({ open:true, name, count:sm.count, total:this.fmt(sm.total), latest:sm.latest, empty:sm.moves.length===0,
+          agg: sm.agg.map(a=>({ item:a.item, times:'สะสม '+a.times+' ครั้ง', last:a.last, qty:this.fmt(a.qty)+' '+a.unit })),
+          moves: sm.moves.map(m=>({ item:m.item, date:m.date, ref:m.ref, qty:'-'+m.qty+' '+m.unit,
+            kindLabel:m.kind==='team'?'ประจำชุด':'รายบุคคล' })) }, extra); };
+      if(S.detail.type==='worker'){ const w=S.workers.find(x=>x.id===S.detail.id); if(w) dt=build(w.name,{ isTeam:false, sub:w.pos+' · '+w.dept, avatar:av(w.name), members:[], vehicles:[] }); }
+      else { const t=S.teams.find(x=>x.id===S.detail.id); if(t){ const lead=S.workers.find(x=>x.id===t.leadId);
+        dt=build(t.name,{ isTeam:true, sub:'หัวหน้าชุด: '+(lead?lead.name:'-'), avatar:'ช',
+          members:t.memberIds.map(id=>{ const m=S.workers.find(x=>x.id===id); return m?m.name:''; }).filter(Boolean), vehicles:t.plates }); } }
+    }
+    const vehicleRows=S.vehicles.map(v=>({ plate:v.plate, type:v.type, team:v.team,
+      iconWrap:{width:46,height:46,borderRadius:13,background:'#F3EAF8',color:'#8B2FA8',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0} }));
+
+    const is=S.issue;
+    const segStyle=(active)=>({height:40,padding:'0 18px',borderRadius:10,border:'none',background:active?'linear-gradient(120deg,#8B2FA8,#B0309C)':'transparent',color:active?'#fff':'#6E687C',fontSize:13.5,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:8,transition:'all .18s',boxShadow:active?'0 4px 12px rgba(139,47,168,.28)':'none'});
+    const recipientOptions = is.kind==='individual'
+      ? S.workers.map(w=>({ value:w.id, label:w.name+' · '+w.pos }))
+      : S.teams.map(t=>({ value:t.id, label:t.name }));
+    const itemOptions=S.items.map(it=>({ value:it.id, label:it.name+' (คงเหลือ '+it.qty+' '+it.unit+')' }));
+    let rc={ has:false };
+    if(is.recipientId){
+      if(is.kind==='individual'){ const w=S.workers.find(x=>x.id===is.recipientId); if(w) rc={ has:true, isTeam:false, name:w.name, sub:w.pos+' · '+w.dept, avatar:av(w.name) }; }
+      else { const t=S.teams.find(x=>x.id===is.recipientId); if(t){ const lead=S.workers.find(x=>x.id===t.leadId);
+        rc={ has:true, isTeam:true, name:t.name, sub:'หัวหน้าชุด: '+(lead?lead.name:'-'), avatar:t.name.replace(/\D/g,'')||'ช',
+          memberCount:t.memberIds.length, members:t.memberIds.map(id=>{ const m=S.workers.find(x=>x.id===id); return m?m.name:''; }).filter(Boolean), vehicles:t.plates }; } }
+    }
+    const issueLines=is.lines.map((l,i)=>{ const it=S.items.find(x=>x.id===l.itemId); const avail=it?it.qty:0; const over=l.qty>avail;
+      return { name:it?it.name:'', unit:it?it.unit:'', qty:l.qty, onRemove:()=>this.removeLine(i),
+        rowStyle:{display:'flex',alignItems:'center',gap:11,padding:'11px 13px',borderRadius:12,background:over?'#FDF1F1':'#FAF8FC',border:'1px solid '+(over?'#F2D4D4':'#F0ECF5')},
+        availText: over?('คงเหลือ '+avail+' — ไม่พอ'):('คงเหลือ '+avail+' '+(it?it.unit:'')),
+        availStyle:{fontSize:11.5,color:over?'#D5443F':'#A79FB6',fontWeight:over?600:400} };
+    });
+    const totalQty=is.lines.reduce((a,b)=>a+b.qty,0);
+    const ticketRecipient = rc.has ? rc.name : '— ยังไม่เลือก —';
+    const nextRef='ISS-'+String(S.refSeq+1).padStart(4,'0');
+
+    const recentReceipts=S.movements.filter(m=>m.type==='in').slice(0,7).map(r=>({ name:r.item, sub:r.party+' · '+r.sub, qty:r.qty+' '+r.unit, date:r.date }));
+
+    const tmap={ success:{bg:'#E7F6EF',col:'#1E9E6A',icon:'check',title:'สำเร็จ'}, warn:{bg:'#FBF1E2',col:'#D98A1F',icon:'alert',title:'แจ้งเตือน'}, danger:{bg:'#FBEAEA',col:'#D5443F',icon:'alert',title:'ผิดพลาด'} };
+    const to=S.toast; const tc=to?tmap[to.type]||tmap.success:tmap.success;
+
+    const notifItems=low.map(it=>{ const st=this.status(it);
+      return { name:it.name, qty:it.qty, min:it.min, unit:it.unit, onClick:()=>this.nav('inventory'),
+        dotStyle:{width:9,height:9,borderRadius:'50%',background:st.color,flexShrink:0},
+        tag:st.label, tagStyle:{fontSize:11,fontWeight:600,color:st.color,background:st.bg,padding:'3px 9px',borderRadius:20,whiteSpace:'nowrap'} };
+    });
+
+    return {
+      navGroups,
+      pageTitle:tt[0], pageSub:tt[1], pageIcon:I(tt[2]),
+      searchIcon:I('search',18), bellIcon:I('bell'), plusIcon:I('plus',18), chevronIcon:I('chevron',16),
+      alertIcon:I('alert',18), checkIcon:I('check',18), closeIcon:I('close',16), penIcon:I('pen',15),
+      personIcon:I('person',16), teamIcon:I('team',16), boxIcon:I('box',17), stockinIcon:I('stockin',18),
+      stockinMiniIcon:I('stockin',17), truckIcon:I('truck',22), truckMiniIcon:I('truck',13), teamMiniIcon:I('team',15),
+      recipientHeadIcon:I(is.kind==='individual'?'person':'team',17), exportIcon:I('export',16),
+      globalSearch:S.globalSearch, onSearch:(e)=>this.setState({globalSearch:e.target.value}),
+      toggleNotif:()=>this.setState({notifOpen:!S.notifOpen}), notifOpen:S.notifOpen, hasAlerts:lowCount>0, alertCount:lowCount, notifItems,
+      goIssue:()=>this.nav('issue'), goInventory:()=>this.nav('inventory'), goHistory:()=>this.nav('history'),
+
+      isDashboard:S.view==='dashboard', isIssue:S.view==='issue', isStockin:S.view==='stockin',
+      isInventory:S.view==='inventory', isHistory:S.view==='history', isReports:S.view==='reports',
+      isWorkers:S.view==='workers', isTeams:S.view==='teams', isVehicles:S.view==='vehicles',
+      teamRows, calendarIcon:I('history',13), chevronRight:I('chevron',15),
+      detailOpen:dt.open, detailIsTeam:dt.isTeam, detailName:dt.name, detailSub:dt.sub, detailAvatar:dt.avatar,
+      detailCount:dt.count, detailTotal:dt.total, detailLatest:dt.latest, detailEmpty:dt.empty,
+      detailMembers:dt.members, detailVehicles:dt.vehicles, detailAgg:dt.agg, detailMoves:dt.moves,
+      detailHeadIcon:I(dt.isTeam?'team':'person',18), issueMiniIcon:I('issue',16), closeDetail:()=>this.closeDetail(),
+
+      kpis, trendEl:this.buildTrend(), trendEl2:this.buildTrend(), donutEl:this.buildDonut(), donutLegend,
+      lowStockView, recentView,
+
+      invRows, catFilters, openAddItem:()=>this.openModal('item'),
+      histFilters, histRows,
+
+      reportStats, reportIsStock, reportIsMove:!reportIsStock, catReport,
+      setReportStock:()=>this.setState({reportTab:'stock'}), setReportMove:()=>this.setState({reportTab:'move'}),
+      reportStockStyle:tabStyle(reportIsStock), reportMoveStyle:tabStyle(!reportIsStock),
+      exportReport:()=>this.toast('กำลังเตรียมไฟล์','ระบบกำลังสร้างรายงาน Excel...','success'),
+
+      workerRows, openAddWorker:()=>this.openModal('worker'),
+      vehicleRows, openAddVehicle:()=>this.openModal('vehicle'),
+
+      setKindIndividual:()=>this.setKind('individual'), setKindTeam:()=>this.setKind('team'),
+      kindIndStyle:segStyle(is.kind==='individual'), kindTeamStyle:segStyle(is.kind==='team'),
+      recipientHead: is.kind==='individual'?'ผู้ปฏิบัติงานที่เบิก':'ชุดงานที่เบิก',
+      recipientLabel: is.kind==='individual'?'ผู้ปฏิบัติงาน':'ชุดงาน',
+      issueRecipientId:is.recipientId, onRecipient:(e)=>this.setIssue({recipientId:e.target.value}),
+      recipientOptions, recipientCard:rc, itemOptions,
+      lineDraftItem:is.lineItem, lineDraftQty:is.lineQty,
+      onLineItem:(e)=>this.setIssue({lineItem:e.target.value}), onLineQty:(e)=>this.setIssue({lineQty:e.target.value}),
+      addLine:()=>this.addLine(), issueLines, hasLines:is.lines.length>0, noLines:is.lines.length===0, lineCount:is.lines.length,
+      totalQty, ticketRecipient, issueRefStr:nextRef, issueDateStr:this.thaiToday(),
+      sigRef:(el)=>{ if(el && el!==this._sigEl){ this._sigEl=el; requestAnimationFrame(()=>this.initSig(el)); } },
+      clearSig:()=>this.clearSig(), sigEmpty:!S.sigInk, submitIssue:()=>this.submitIssue(),
+
+      submitStockIn:()=>this.submitStockIn(), recentReceipts,
+
+      toastOpen:!!to, toastTitle:tc.title, toastMsg:to?to.msg:'', toastIcon:I(tc.icon,18),
+      toastStyle:{display:'flex',alignItems:'center',gap:13,background:'#fff',border:'1px solid #ECEAF1',borderRadius:14,padding:'14px 18px',minWidth:300,boxShadow:'0 16px 44px rgba(33,26,46,.18)'},
+      toastIconWrap:{width:36,height:36,borderRadius:10,background:tc.bg,color:tc.col,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0},
+
+      modalOpen:!!S.modal, closeModal:()=>this.closeModal(), stop:(e)=>e.stopPropagation(),
+      modalIsItem:S.modal==='item', modalIsWorker:S.modal==='worker', modalIsVehicle:S.modal==='vehicle',
+      modalTitle: S.modal==='item'?'เพิ่มรายการอุปกรณ์': S.modal==='worker'?'เพิ่มผู้ปฏิบัติงาน': S.modal==='vehicle'?'เพิ่มทะเบียนรถ':'',
+      catOptions:['ศีรษะ','ตา/ใบหน้า','มือ','เท้า','ลำตัว','กันตก','อื่นๆ'],
+      deptOptions:['แผนกปฏิบัติการและบำรุงรักษา','แผนกก่อสร้าง','แผนกมิเตอร์','แผนกบริการลูกค้า'],
+      vtypeOptions:['รถกระเช้าแก้ไฟ','รถเครน','รถเครนเจาะ','รถบรรทุก','รถกระบะ'],
+      submitAddItem:()=>this.submitAddItem(), submitAddWorker:()=>this.submitAddWorker(), submitAddVehicle:()=>this.submitAddVehicle()
+    };
+  }
+
+  render(){
+    if(this.state.loading) return <LoadingScreen msg="กำลังโหลดข้อมูลจากฐานข้อมูล..." />;
+    const V = this.renderVals();
+    return (
+      <div style={css('display:flex;min-height:100vh;width:100%;background:#F4F2F8')}>
+
+        {/* ===================== SIDEBAR ===================== */}
+        <aside style={css('width:264px;flex-shrink:0;background:linear-gradient(178deg,#3E1457 0%,#2B0F3E 60%,#250B36 100%);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh')}>
+          <div style={css('padding:22px 22px 18px;display:flex;align-items:center;gap:13px;border-bottom:1px solid rgba(255,255,255,.08)')}>
+            <div style={css('width:42px;height:42px;border-radius:13px;background:linear-gradient(140deg,#B0309C,#7A23A8);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;box-shadow:0 6px 16px rgba(176,48,156,.4);flex-shrink:0')}>PE</div>
+            <div style={css('line-height:1.25;min-width:0')}>
+              <div style={css('font-weight:700;font-size:15.5px;letter-spacing:.2px;white-space:nowrap')}>PPE STOCK</div>
+              <div style={css('font-size:11px;color:rgba(255,255,255,.55);font-weight:400;white-space:nowrap')}>กฟภ. อำเภอเบตง</div>
+            </div>
+          </div>
+
+          <nav style={css('flex:1;overflow-y:auto;padding:14px 14px 8px;display:flex;flex-direction:column;gap:4px')}>
+            {V.navGroups.map((grp,gi)=>(
+              <div key={gi} style={css('margin-top:14px')}>
+                <div style={css('font-size:10.5px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.34);padding:0 12px 7px')}>{grp.label}</div>
+                <div style={css('display:flex;flex-direction:column;gap:3px')}>
+                  {grp.items.map((item,ii)=>(
+                    <Box key={ii} onClick={item.onClick} s={item.rowStyle} h="background:rgba(255,255,255,.09)">
+                      <span style={css('display:flex;width:20px;height:20px;align-items:center;justify-content:center;flex-shrink:0')}>{item.icon}</span>
+                      <span style={css('flex:1')}>{item.label}</span>
+                      {item.showBadge && <span style={item.badgeStyle}>{item.badge}</span>}
+                    </Box>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </nav>
+
+          <div style={css('padding:14px;border-top:1px solid rgba(255,255,255,.08)')}>
+            <div style={css('display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:12px;background:rgba(255,255,255,.06)')}>
+              <div style={css('width:36px;height:36px;border-radius:50%;background:linear-gradient(140deg,#C77ED6,#7A23A8);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;flex-shrink:0')}>จ</div>
+              <div style={css('flex:1;line-height:1.3;min-width:0')}>
+                <div style={css('font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>จนท. คลังพัสดุ</div>
+                <div style={css('font-size:11px;color:rgba(255,255,255,.5)')}>ผู้ดูแลระบบ</div>
+              </div>
+              {SB_READY && this.props.onSignOut && (
+                <Box tag="button" onClick={this.props.onSignOut} title="ออกจากระบบ" s="width:32px;height:32px;border-radius:9px;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s" h="background:rgba(213,68,63,.2);color:#fff">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+                </Box>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* ===================== MAIN ===================== */}
+        <main style={css('flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;overflow:hidden')}>
+
+          {/* TOPBAR */}
+          <header style={css('height:70px;flex-shrink:0;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);border-bottom:1px solid #EAE6F0;display:flex;align-items:center;gap:18px;padding:0 28px;position:relative;z-index:30')}>
+            <div style={css('display:flex;align-items:center;gap:13px;min-width:0')}>
+              <span style={css('width:38px;height:38px;border-radius:11px;background:#F3EAF8;color:#8B2FA8;display:flex;align-items:center;justify-content:center;flex-shrink:0')}>{V.pageIcon}</span>
+              <div style={css('line-height:1.25;min-width:0')}>
+                <div style={css('font-size:17px;font-weight:600;color:#211A2E;white-space:nowrap')}>{V.pageTitle}</div>
+                <div style={css('font-size:12px;color:#8A8398;white-space:nowrap')}>{V.pageSub}</div>
+              </div>
+            </div>
+
+            <div style={css('flex:1;display:flex;justify-content:center;max-width:420px;margin:0 auto')}>
+              <div style={css('position:relative;width:100%')}>
+                <span style={css('position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.searchIcon}</span>
+                <Box tag="input" value={V.globalSearch} onChange={V.onSearch} placeholder="ค้นหาอุปกรณ์, ผู้ปฏิบัติงาน, ทะเบียนรถ..."
+                  s="width:100%;height:42px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px 0 40px;font-size:13.5px;color:#211A2E;transition:all .18s" f={FIELD_FOCUS} />
+              </div>
+            </div>
+
+            <div style={css('display:flex;align-items:center;gap:10px;flex-shrink:0')}>
+              <div style={css('position:relative')}>
+                <Box tag="button" onClick={V.toggleNotif} s="width:42px;height:42px;border-radius:12px;border:1px solid #E7E2EF;background:#fff;color:#5A5368;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:all .16s" h="border-color:#C9AED9;color:#8B2FA8">
+                  {V.bellIcon}
+                  {V.hasAlerts && <span style={css('position:absolute;top:7px;right:8px;width:9px;height:9px;border-radius:50%;background:#D5443F;border:2px solid #fff;animation:pulseRing 2s infinite')}></span>}
+                </Box>
+                {V.notifOpen && (
+                  <div style={css('position:absolute;right:0;top:52px;width:340px;background:#fff;border:1px solid #EAE6F0;border-radius:16px;box-shadow:0 18px 50px rgba(33,26,46,.18);overflow:hidden;animation:popIn .18s ease;z-index:40')}>
+                    <div style={css('padding:14px 16px;border-bottom:1px solid #F0EDF5;display:flex;align-items:center;justify-content:space-between')}>
+                      <span style={css('font-weight:600;font-size:14px')}>แจ้งเตือนสต็อกต่ำ</span>
+                      <span style={css('font-size:11px;font-weight:600;color:#D5443F;background:#FBEAEA;padding:3px 9px;border-radius:20px')}>{V.alertCount} รายการ</span>
+                    </div>
+                    <div style={css('max-height:320px;overflow-y:auto')}>
+                      {V.notifItems.map((n,i)=>(
+                        <Box key={i} onClick={n.onClick} s="padding:12px 16px;border-bottom:1px solid #F5F2F9;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background .15s" h="background:#FBF7FD">
+                          <span style={n.dotStyle}></span>
+                          <div style={css('flex:1;min-width:0')}>
+                            <div style={css('font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{n.name}</div>
+                            <div style={css('font-size:11.5px;color:#8A8398')}>คงเหลือ {n.qty} / ขั้นต่ำ {n.min} {n.unit}</div>
+                          </div>
+                          <span style={n.tagStyle}>{n.tag}</span>
+                        </Box>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <Box tag="button" onClick={V.goIssue} s="height:42px;padding:0 18px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(139,47,168,.32);transition:all .16s" h="transform:translateY(-1px);box-shadow:0 10px 26px rgba(139,47,168,.42)">
+                {V.plusIcon} เบิกจ่าย PPE
+              </Box>
+            </div>
+          </header>
+
+          {/* CONTENT */}
+          <div data-scroll style={css('flex:1;overflow-y:auto;padding:26px 28px 60px')}>
+
+            {/* ============ DASHBOARD ============ */}
+            {V.isDashboard && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:20px')}>
+                <div style={css('display:grid;grid-template-columns:repeat(4,1fr);gap:16px')}>
+                  {V.kpis.map((k,i)=>(
+                    <Box key={i} s="background:#fff;border:1px solid #ECEAF1;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:13px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05);transition:all .2s;position:relative;overflow:hidden" h="transform:translateY(-3px);box-shadow:0 16px 36px rgba(122,35,168,.13)">
+                      <div style={css('display:flex;align-items:flex-start;justify-content:space-between')}>
+                        <span style={css('font-size:13px;color:#6E687C;font-weight:500;line-height:1.4')}>{k.label}</span>
+                        <span style={k.iconWrap}>{k.icon}</span>
+                      </div>
+                      <div style={css("font-family:'IBM Plex Mono',monospace;font-size:31px;font-weight:600;color:#211A2E;letter-spacing:-1px;line-height:1")}>{k.value}</div>
+                      <div style={k.subStyle}>{k.sub}</div>
+                    </Box>
+                  ))}
+                </div>
+
+                <div style={css('display:grid;grid-template-columns:1.55fr 1fr;gap:16px')}>
+                  <div style={css(CARD+';padding:22px')}>
+                    <div style={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:6px')}>
+                      <div>
+                        <div style={css('font-size:15px;font-weight:600')}>ความเคลื่อนไหวสต็อก</div>
+                        <div style={css('font-size:12px;color:#8A8398;margin-top:2px')}>เปรียบเทียบรับเข้า–จ่ายออก 7 วันล่าสุด</div>
+                      </div>
+                      <div style={css('display:flex;gap:14px')}>
+                        <span style={css('display:flex;align-items:center;gap:6px;font-size:12px;color:#6E687C')}><span style={css('width:11px;height:11px;border-radius:3px;background:#8B2FA8')}></span>รับเข้า</span>
+                        <span style={css('display:flex;align-items:center;gap:6px;font-size:12px;color:#6E687C')}><span style={css('width:11px;height:11px;border-radius:3px;background:#E0902A')}></span>จ่ายออก</span>
+                      </div>
+                    </div>
+                    {V.trendEl}
+                  </div>
+
+                  <div style={css(CARD+';padding:22px;display:flex;flex-direction:column')}>
+                    <div style={css('font-size:15px;font-weight:600')}>สุขภาพสต็อก</div>
+                    <div style={css('font-size:12px;color:#8A8398;margin:2px 0 8px')}>สัดส่วนรายการตามสถานะคงเหลือ</div>
+                    <div style={css('display:flex;align-items:center;gap:18px;flex:1')}>
+                      {V.donutEl}
+                      <div style={css('display:flex;flex-direction:column;gap:11px;flex:1')}>
+                        {V.donutLegend.map((d,i)=>(
+                          <div key={i} style={css('display:flex;align-items:center;gap:9px')}>
+                            <span style={d.dotStyle}></span>
+                            <span style={css('flex:1;font-size:13px;color:#4A4458')}>{d.label}</span>
+                            <span style={css("font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:#211A2E")}>{d.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:16px')}>
+                  <div style={css(CARD+';padding:22px')}>
+                    <div style={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:16px')}>
+                      <div style={css('font-size:15px;font-weight:600;display:flex;align-items:center;gap:9px')}><span style={css('color:#D5443F')}>{V.alertIcon}</span>แจ้งเตือนสต็อกต่ำ</div>
+                      <span onClick={V.goInventory} style={css('font-size:12px;color:#8B2FA8;font-weight:600;cursor:pointer')}>ดูทั้งหมด →</span>
+                    </div>
+                    <div style={css('display:flex;flex-direction:column;gap:14px')}>
+                      {V.lowStockView.map((it,i)=>(
+                        <div key={i} style={css('display:flex;flex-direction:column;gap:7px')}>
+                          <div style={css('display:flex;align-items:center;justify-content:space-between;gap:10px')}>
+                            <span style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{it.name}</span>
+                            <span style={it.statusStyle}>{it.statusLabel}</span>
+                          </div>
+                          <div style={css('display:flex;align-items:center;gap:11px')}>
+                            <div style={css('flex:1;height:7px;background:#F0ECF5;border-radius:20px;overflow:hidden')}>
+                              <div style={it.fillStyle}></div>
+                            </div>
+                            <span style={css("font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6E687C;white-space:nowrap")}>{it.qty}/{it.min}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={css(CARD+';padding:22px')}>
+                    <div style={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:16px')}>
+                      <div style={css('font-size:15px;font-weight:600')}>รายการเคลื่อนไหวล่าสุด</div>
+                      <span onClick={V.goHistory} style={css('font-size:12px;color:#8B2FA8;font-weight:600;cursor:pointer')}>ดูประวัติ →</span>
+                    </div>
+                    <div style={css('display:flex;flex-direction:column')}>
+                      {V.recentView.map((m,i)=>(
+                        <div key={i} style={css('display:flex;align-items:center;gap:13px;padding:9px 0;border-bottom:1px solid #F5F2F9')}>
+                          <span style={m.iconWrap}>{m.icon}</span>
+                          <div style={css('flex:1;min-width:0')}>
+                            <div style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{m.title}</div>
+                            <div style={css('font-size:11.5px;color:#8A8398;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{m.sub}</div>
+                          </div>
+                          <div style={css('text-align:right;flex-shrink:0')}>
+                            <div style={m.qtyStyle}>{m.qty}</div>
+                            <div style={css('font-size:11px;color:#A79FB6')}>{m.date}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ============ ISSUE ============ */}
+            {V.isIssue && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1180px;margin:0 auto')}>
+                <div style={css('display:inline-flex;padding:5px;background:#fff;border:1px solid #ECEAF1;border-radius:14px;margin-bottom:20px;box-shadow:0 1px 2px rgba(33,26,46,.04)')}>
+                  <button onClick={V.setKindIndividual} style={V.kindIndStyle}>{V.personIcon} เบิกรายบุคคล</button>
+                  <button onClick={V.setKindTeam} style={V.kindTeamStyle}>{V.teamIcon} เบิกประจำชุดงาน</button>
+                </div>
+
+                <div style={css('display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start')}>
+                  {/* form */}
+                  <div style={css('display:flex;flex-direction:column;gap:16px')}>
+                    <div style={css(CARD+';padding:22px')}>
+                      <div style={css('font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px')}>{V.recipientHeadIcon} {V.recipientHead}</div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>{V.recipientLabel}</label>
+                      <div style={css('position:relative')}>
+                        <Box tag="select" value={V.issueRecipientId} onChange={V.onRecipient} s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 38px 0 14px;font-size:14px;color:#211A2E;appearance:none;cursor:pointer;transition:all .16s" f={FIELD_FOCUS}>
+                          <option value="">— เลือก{V.recipientLabel} —</option>
+                          {V.recipientOptions.map((o,i)=>(<option key={i} value={o.value}>{o.label}</option>))}
+                        </Box>
+                        <span style={css('position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                      </div>
+
+                      {V.recipientCard.has && (
+                        <div style={css('margin-top:16px;padding:16px;border-radius:14px;background:linear-gradient(135deg,#FAF4FC,#F4ECF8);border:1px solid #EEDFF4;animation:popIn .2s ease')}>
+                          <div style={css('display:flex;align-items:center;gap:13px')}>
+                            <div style={css('width:46px;height:46px;border-radius:13px;background:linear-gradient(140deg,#B0309C,#7A23A8);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:18px;flex-shrink:0')}>{V.recipientCard.avatar}</div>
+                            <div style={css('flex:1;min-width:0')}>
+                              <div style={css('font-size:15px;font-weight:600')}>{V.recipientCard.name}</div>
+                              <div style={css('font-size:12.5px;color:#7A6E88')}>{V.recipientCard.sub}</div>
+                            </div>
+                          </div>
+                          {V.recipientCard.isTeam && (
+                            <div style={css('margin-top:13px;padding-top:13px;border-top:1px dashed #E2D2EA;display:flex;flex-direction:column;gap:10px')}>
+                              <div>
+                                <div style={css('font-size:11px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px')}>สมาชิกในชุด ({V.recipientCard.memberCount})</div>
+                                <div style={css('display:flex;flex-wrap:wrap;gap:6px')}>
+                                  {V.recipientCard.members.map((mb,i)=>(<span key={i} style={css('font-size:12px;background:#fff;border:1px solid #ECDDF2;color:#5A4D68;padding:4px 10px;border-radius:20px')}>{mb}</span>))}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={css('font-size:11px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px')}>ยานพาหนะประจำชุด</div>
+                                <div style={css('display:flex;flex-wrap:wrap;gap:6px')}>
+                                  {V.recipientCard.vehicles.map((v,i)=>(<span key={i} style={css('font-size:12px;background:#FFF6E9;border:1px solid #F3E2C4;color:#9A6A1A;padding:4px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:6px')}>{V.truckMiniIcon} {v}</span>))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={css(CARD+';padding:22px')}>
+                      <div style={css('font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px')}>{V.boxIcon} เลือกอุปกรณ์ที่จะเบิก</div>
+                      <div style={css('display:flex;gap:10px;align-items:flex-end')}>
+                        <div style={css('flex:1')}>
+                          <label style={css('display:block;font-size:12px;color:#6E687C;margin-bottom:6px')}>รายการอุปกรณ์</label>
+                          <div style={css('position:relative')}>
+                            <Box tag="select" value={V.lineDraftItem} onChange={V.onLineItem} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 34px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f="border-color:#B97FCE;background:#fff">
+                              <option value="">— เลือกอุปกรณ์ —</option>
+                              {V.itemOptions.map((o,i)=>(<option key={i} value={o.value}>{o.label}</option>))}
+                            </Box>
+                            <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                          </div>
+                        </div>
+                        <div style={css('width:92px')}>
+                          <label style={css('display:block;font-size:12px;color:#6E687C;margin-bottom:6px')}>จำนวน</label>
+                          <Box tag="input" value={V.lineDraftQty} onChange={V.onLineQty} type="number" min="1" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 12px;font-size:14px;font-family:'IBM Plex Mono',monospace;text-align:center" f="border-color:#B97FCE;background:#fff" />
+                        </div>
+                        <Box tag="button" onClick={V.addLine} s="height:44px;width:44px;border-radius:11px;border:none;background:#F3EAF8;color:#8B2FA8;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s" h="background:#8B2FA8;color:#fff">{V.plusIcon}</Box>
+                      </div>
+
+                      <div style={css('margin-top:16px;display:flex;flex-direction:column;gap:9px')}>
+                        {V.hasLines && V.issueLines.map((l,i)=>(
+                          <div key={i} style={l.rowStyle}>
+                            <div style={css('flex:1;min-width:0')}>
+                              <div style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{l.name}</div>
+                              <div style={l.availStyle}>{l.availText}</div>
+                            </div>
+                            <span style={css("font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;background:#fff;border:1px solid #E7E2EF;padding:4px 11px;border-radius:9px")}>{l.qty} {l.unit}</span>
+                            <Box tag="button" onClick={l.onRemove} s="width:30px;height:30px;border-radius:8px;border:none;background:transparent;color:#C0B8CC;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="background:#FBEAEA;color:#D5443F">{V.closeIcon}</Box>
+                          </div>
+                        ))}
+                        {V.noLines && <div style={css('text-align:center;padding:24px;color:#B4ABC2;font-size:13px;border:1.5px dashed #E7E2EF;border-radius:12px')}>ยังไม่มีรายการอุปกรณ์ — เลือกและกดเพิ่ม</div>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ticket / confirm */}
+                  <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 14px 40px rgba(33,26,46,.07);overflow:hidden;position:sticky;top:0')}>
+                    <div style={css('background:linear-gradient(135deg,#3E1457,#5A2080);color:#fff;padding:18px 22px')}>
+                      <div style={css('display:flex;align-items:center;justify-content:space-between')}>
+                        <span style={css('font-size:14px;font-weight:600')}>ใบเบิกอุปกรณ์ PPE</span>
+                        <span style={css("font-family:'IBM Plex Mono',monospace;font-size:12px;background:rgba(255,255,255,.16);padding:3px 10px;border-radius:7px")}>{V.issueRefStr}</span>
+                      </div>
+                      <div style={css('font-size:12px;color:rgba(255,255,255,.6);margin-top:4px')}>{V.issueDateStr}</div>
+                    </div>
+                    <div style={css('padding:20px 22px;display:flex;flex-direction:column;gap:16px')}>
+                      <div style={css('display:flex;justify-content:space-between;font-size:13px')}>
+                        <span style={css('color:#8A8398')}>ผู้รับ / ชุดงาน</span>
+                        <span style={css('font-weight:600;text-align:right')}>{V.ticketRecipient}</span>
+                      </div>
+                      <div style={css('border-top:1px dashed #E7E2EF;padding-top:14px;display:flex;flex-direction:column;gap:9px')}>
+                        <div style={css('font-size:11px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.6px')}>รายการ ({V.lineCount})</div>
+                        {V.hasLines && V.issueLines.map((l,i)=>(
+                          <div key={i} style={css('display:flex;justify-content:space-between;font-size:13px')}>
+                            <span style={css('color:#4A4458;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:8px')}>{l.name}</span>
+                            <span style={css("font-family:'IBM Plex Mono',monospace;font-weight:600;flex-shrink:0")}>×{l.qty}</span>
+                          </div>
+                        ))}
+                        {V.noLines && <span style={css('font-size:12.5px;color:#B4ABC2')}>— ยังไม่มีรายการ —</span>}
+                      </div>
+                      <div style={css('display:flex;justify-content:space-between;align-items:center;background:#FAF4FC;border-radius:11px;padding:11px 14px')}>
+                        <span style={css('font-size:13px;font-weight:500;color:#6E687C')}>รวมทั้งหมด</span>
+                        <span style={css("font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:600;color:#8B2FA8")}>{V.totalQty} ชิ้น</span>
+                      </div>
+
+                      <div>
+                        <div style={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:7px')}>
+                          <span style={css('font-size:12.5px;color:#6E687C;font-weight:500;display:flex;align-items:center;gap:6px')}>{V.penIcon} ลายเซ็นผู้รับของ</span>
+                          <span onClick={V.clearSig} style={css('font-size:12px;color:#8B2FA8;cursor:pointer;font-weight:500')}>ล้าง</span>
+                        </div>
+                        <div style={css('position:relative;border:1.5px solid #E7E2EF;border-radius:12px;background:#FCFBFD;height:120px;overflow:hidden')}>
+                          <canvas ref={V.sigRef} style={css('width:100%;height:100%;display:block;touch-action:none;cursor:crosshair')}></canvas>
+                          {V.sigEmpty && <span style={css('position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#CFC7DC;font-size:13px;pointer-events:none')}>เซ็นชื่อที่นี่</span>}
+                        </div>
+                      </div>
+
+                      <Box tag="button" onClick={V.submitIssue} s="height:50px;border-radius:13px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 8px 22px rgba(139,47,168,.35);transition:all .16s" h="transform:translateY(-2px);box-shadow:0 12px 30px rgba(139,47,168,.45)">{V.checkIcon} ยืนยันการเบิกจ่าย</Box>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ============ STOCK IN ============ */}
+            {V.isStockin && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1fr 1.2fr;gap:18px;align-items:start')}>
+                <div style={css(CARD+';padding:24px')}>
+                  <div style={css('font-size:15px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:9px')}>{V.stockinIcon} รับอุปกรณ์เข้าคลัง</div>
+                  <div style={css('font-size:12.5px;color:#8A8398;margin-bottom:20px')}>บันทึกการรับเข้าเพื่อเพิ่มจำนวนคงเหลือ</div>
+                  <div style={css('display:flex;flex-direction:column;gap:15px')}>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>รายการอุปกรณ์</label>
+                      <div style={css('position:relative')}>
+                        <Box tag="select" id="si_item" s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 38px 0 14px;font-size:14px;appearance:none;cursor:pointer" f="border-color:#B97FCE;background:#fff">
+                          {V.itemOptions.map((o,i)=>(<option key={i} value={o.value}>{o.label}</option>))}
+                        </Box>
+                        <span style={css('position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                      </div>
+                    </div>
+                    <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:13px')}>
+                      <div>
+                        <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>จำนวนรับเข้า</label>
+                        <Box tag="input" id="si_qty" type="number" min="1" defaultValue="10" s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px;font-size:14px;font-family:'IBM Plex Mono',monospace" f="border-color:#B97FCE;background:#fff" />
+                      </div>
+                      <div>
+                        <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>เลขที่ใบส่งของ / ล็อต</label>
+                        <Box tag="input" id="si_lot" placeholder="เช่น PO-2569-014" s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ผู้รับเข้า / แหล่งที่มา</label>
+                      <Box tag="input" id="si_by" placeholder="เช่น คลังพัสดุกลาง / ผู้จัดส่ง" s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                    </div>
+                    <Box tag="button" onClick={V.submitStockIn} s="height:50px;border-radius:13px;border:none;background:linear-gradient(120deg,#1E9E6A,#15B57A);color:#fff;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 8px 22px rgba(30,158,106,.3);transition:all .16s" h="transform:translateY(-2px);box-shadow:0 12px 28px rgba(30,158,106,.4)">{V.checkIcon} บันทึกรับเข้า</Box>
+                  </div>
+                </div>
+
+                <div style={css(CARD+';padding:22px')}>
+                  <div style={css('font-size:15px;font-weight:600;margin-bottom:16px')}>ประวัติการรับเข้าล่าสุด</div>
+                  <div style={css('display:flex;flex-direction:column')}>
+                    {V.recentReceipts.map((r,i)=>(
+                      <div key={i} style={css('display:flex;align-items:center;gap:13px;padding:11px 0;border-bottom:1px solid #F5F2F9')}>
+                        <span style={css('width:38px;height:38px;border-radius:11px;background:#E7F6EF;color:#1E9E6A;display:flex;align-items:center;justify-content:center;flex-shrink:0')}>{V.stockinMiniIcon}</span>
+                        <div style={css('flex:1;min-width:0')}>
+                          <div style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{r.name}</div>
+                          <div style={css('font-size:11.5px;color:#8A8398')}>{r.sub}</div>
+                        </div>
+                        <div style={css('text-align:right;flex-shrink:0')}>
+                          <div style={css("font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:#1E9E6A")}>+{r.qty}</div>
+                          <div style={css('font-size:11px;color:#A79FB6')}>{r.date}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ============ INVENTORY ============ */}
+            {V.isInventory && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto')}>
+                <div style={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap')}>
+                  <div style={css('display:flex;gap:8px;flex-wrap:wrap')}>
+                    {V.catFilters.map((c,i)=>(<button key={i} onClick={c.onClick} style={c.style}>{c.label}</button>))}
+                  </div>
+                  <Box tag="button" onClick={V.openAddItem} s="height:42px;padding:0 18px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(139,47,168,.28);transition:all .16s" h="transform:translateY(-1px);box-shadow:0 10px 24px rgba(139,47,168,.4)">{V.plusIcon} เพิ่มรายการอุปกรณ์</Box>
+                </div>
+
+                <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)')}>
+                  <div style={css('display:grid;grid-template-columns:90px 2.2fr 1fr 1.4fr 1.1fr 110px;gap:14px;padding:14px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
+                    <span>รหัส</span><span>รายการ</span><span>หมวดหมู่</span><span>ระดับคงเหลือ</span><span>จุดจัดเก็บ</span><span style={css('text-align:right')}>สถานะ</span>
+                  </div>
+                  <div>
+                    {V.invRows.map((it,i)=>(
+                      <Box key={i} s="display:grid;grid-template-columns:90px 2.2fr 1fr 1.4fr 1.1fr 110px;gap:14px;padding:15px 22px;border-bottom:1px solid #F5F2F9;align-items:center;transition:background .15s" h="background:#FCFAFE">
+                        <span style={css("font-family:'IBM Plex Mono',monospace;font-size:12px;color:#9A8FA8")}>{it.code}</span>
+                        <div style={css('min-width:0')}>
+                          <div style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{it.name}</div>
+                          <div style={css('font-size:11.5px;color:#A79FB6')}>ขั้นต่ำ {it.min} {it.unit}</div>
+                        </div>
+                        <span style={it.catStyle}>{it.cat}</span>
+                        <div style={css('display:flex;align-items:center;gap:10px')}>
+                          <div style={css('flex:1;height:7px;background:#F0ECF5;border-radius:20px;overflow:hidden;min-width:50px')}>
+                            <div style={it.fillStyle}></div>
+                          </div>
+                          <span style={css("font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;white-space:nowrap")}>{it.qty}</span>
+                        </div>
+                        <span style={css('font-size:12.5px;color:#6E687C')}>{it.loc}</span>
+                        <div style={css('text-align:right')}><span style={it.statusStyle}>{it.statusLabel}</span></div>
+                      </Box>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ============ HISTORY ============ */}
+            {V.isHistory && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto')}>
+                <div style={css('display:flex;gap:8px;margin-bottom:16px')}>
+                  {V.histFilters.map((f,i)=>(<button key={i} onClick={f.onClick} style={f.style}>{f.label}</button>))}
+                </div>
+                <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)')}>
+                  <div style={css('display:grid;grid-template-columns:120px 110px 2fr 1.6fr 1fr 110px;gap:14px;padding:14px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
+                    <span>วันที่</span><span>ประเภท</span><span>รายการ</span><span>ผู้รับ / ชุดงาน</span><span style={css('text-align:center')}>จำนวน</span><span style={css('text-align:right')}>เลขที่</span>
+                  </div>
+                  <div>
+                    {V.histRows.map((h,i)=>(
+                      <Box key={i} s="display:grid;grid-template-columns:120px 110px 2fr 1.6fr 1fr 110px;gap:14px;padding:14px 22px;border-bottom:1px solid #F5F2F9;align-items:center;transition:background .15s" h="background:#FCFAFE">
+                        <span style={css('font-size:12.5px;color:#6E687C')}>{h.date}</span>
+                        <span style={h.typeStyle}>{h.typeIcon} {h.typeLabel}</span>
+                        <span style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h.item}</span>
+                        <div style={css('min-width:0')}>
+                          <div style={css('font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h.party}</div>
+                          <div style={css('font-size:11px;color:#A79FB6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h.sub}</div>
+                        </div>
+                        <span style={h.qtyStyle}>{h.qtyText}</span>
+                        <span style={css("font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9A8FA8;text-align:right")}>{h.ref}</span>
+                      </Box>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ============ REPORTS ============ */}
+            {V.isReports && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:18px')}>
+                <div style={css('display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px')}>
+                  <div style={css('display:inline-flex;padding:5px;background:#fff;border:1px solid #ECEAF1;border-radius:13px;box-shadow:0 1px 2px rgba(33,26,46,.04)')}>
+                    <button onClick={V.setReportStock} style={V.reportStockStyle}>รายงานสินค้าคงเหลือ</button>
+                    <button onClick={V.setReportMove} style={V.reportMoveStyle}>รายงานการเคลื่อนไหว</button>
+                  </div>
+                  <Box tag="button" onClick={V.exportReport} s="height:42px;padding:0 18px;border-radius:12px;border:1px solid #E7E2EF;background:#fff;color:#5A5368;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .15s" h="border-color:#C9AED9;color:#8B2FA8">{V.exportIcon} ส่งออก Excel</Box>
+                </div>
+
+                <div style={css('display:grid;grid-template-columns:repeat(4,1fr);gap:16px')}>
+                  {V.reportStats.map((s,i)=>(
+                    <div key={i} style={css('background:#fff;border:1px solid #ECEAF1;border-radius:16px;padding:18px;box-shadow:0 1px 2px rgba(33,26,46,.04)')}>
+                      <div style={css('font-size:12.5px;color:#6E687C;margin-bottom:9px')}>{s.label}</div>
+                      <div style={s.valueStyle}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {V.reportIsStock && (
+                  <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)')}>
+                    <div style={css('padding:18px 22px;border-bottom:1px solid #F0EDF5;font-size:15px;font-weight:600')}>สรุปคงเหลือตามหมวดหมู่</div>
+                    <div style={css('display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:14px;padding:13px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
+                      <span>หมวดหมู่</span><span style={css('text-align:center')}>จำนวนรายการ</span><span style={css('text-align:center')}>คงเหลือรวม</span><span style={css('text-align:center')}>สถานะต่ำกว่าเกณฑ์</span>
+                    </div>
+                    {V.catReport.map((c,i)=>(
+                      <div key={i} style={css('display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:14px;padding:14px 22px;border-bottom:1px solid #F5F2F9;align-items:center')}>
+                        <span style={css('display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500')}><span style={c.dotStyle}></span>{c.name}</span>
+                        <span style={css("text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13.5px")}>{c.items}</span>
+                        <span style={css("text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600")}>{c.qty}</span>
+                        <span style={css('text-align:center')}>{c.lowBadge}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {V.reportIsMove && (
+                  <div style={css(CARD+';padding:22px')}>
+                    <div style={css('font-size:15px;font-weight:600;margin-bottom:6px')}>ความเคลื่อนไหวรายวัน</div>
+                    <div style={css('font-size:12px;color:#8A8398;margin-bottom:8px')}>7 วันล่าสุด</div>
+                    {V.trendEl2}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ============ WORKERS ============ */}
+            {V.isWorkers && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto')}>
+                <div style={css('display:flex;justify-content:flex-end;margin-bottom:16px')}>
+                  <Box tag="button" onClick={V.openAddWorker} s="height:42px;padding:0 18px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(139,47,168,.28);transition:all .16s" h="transform:translateY(-1px);box-shadow:0 10px 24px rgba(139,47,168,.4)">{V.plusIcon} เพิ่มผู้ปฏิบัติงาน</Box>
+                </div>
+                <div style={css('display:grid;grid-template-columns:repeat(3,1fr);gap:14px')}>
+                  {V.workerRows.map((w,i)=>(
+                    <Box key={i} onClick={w.onClick} s="background:#fff;border:1px solid #ECEAF1;border-radius:16px;padding:18px;box-shadow:0 1px 2px rgba(33,26,46,.04);transition:all .18s;cursor:pointer" h="transform:translateY(-2px);box-shadow:0 12px 28px rgba(122,35,168,.13);border-color:#E2CDEC">
+                      <div style={css('display:flex;gap:14px;align-items:center')}>
+                        <div style={css('width:50px;height:50px;border-radius:14px;background:linear-gradient(140deg,#C77ED6,#7A23A8);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:19px;flex-shrink:0')}>{w.avatar}</div>
+                        <div style={css('flex:1;min-width:0')}>
+                          <div style={css('font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{w.name}</div>
+                          <div style={css('font-size:12.5px;color:#8B2FA8;font-weight:500')}>{w.pos}</div>
+                          <div style={css('font-size:11.5px;color:#A79FB6;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{w.dept}</div>
+                        </div>
+                        <span style={css('color:#C9BFD8;flex-shrink:0')}>{V.chevronRight}</span>
+                      </div>
+                      <div style={css('margin-top:13px;padding-top:12px;border-top:1px solid #F2EEF7;display:flex;align-items:center;justify-content:space-between;font-size:12px')}>
+                        <span style={css('color:#8A8398;display:flex;align-items:center;gap:6px')}>{V.calendarIcon} เบิกล่าสุด {w.last}</span>
+                        <span style={css('font-weight:600;color:#8B2FA8;background:#F6EEFA;padding:3px 10px;border-radius:20px')}>{w.count} ครั้ง</span>
+                      </div>
+                    </Box>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ============ TEAMS ============ */}
+            {V.isTeams && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:16px')}>
+                {V.teamRows.map((t,i)=>(
+                  <Box key={i} onClick={t.onClick} s="background:#fff;border:1px solid #ECEAF1;border-radius:18px;padding:20px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 8px 24px rgba(33,26,46,.05);transition:all .18s;cursor:pointer" h="transform:translateY(-3px);box-shadow:0 16px 36px rgba(122,35,168,.14);border-color:#E2CDEC">
+                    <div style={css('display:flex;align-items:center;gap:13px')}>
+                      <span style={css('width:48px;height:48px;border-radius:14px;background:linear-gradient(140deg,#7A23A8,#3E1457);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0')}>{V.teamMiniIcon}</span>
+                      <div style={css('flex:1;min-width:0')}>
+                        <div style={css('font-size:15.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{t.name}</div>
+                        <div style={css('font-size:12.5px;color:#8A8398')}>หัวหน้าชุด: {t.lead}</div>
+                      </div>
+                      <span style={css('color:#C9BFD8;flex-shrink:0')}>{V.chevronRight}</span>
+                    </div>
+                    <div style={css('margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px')}>
+                      <div style={css('background:#FAF4FC;border-radius:12px;padding:12px;text-align:center')}>
+                        <div style={css("font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:#8B2FA8")}>{t.total}</div>
+                        <div style={css('font-size:11px;color:#9A8FA8;margin-top:2px')}>ชิ้นสะสม</div>
+                      </div>
+                      <div style={css('background:#F7F5FA;border-radius:12px;padding:12px;text-align:center')}>
+                        <div style={css("font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:#211A2E")}>{t.count}</div>
+                        <div style={css('font-size:11px;color:#9A8FA8;margin-top:2px')}>ครั้งที่เบิก</div>
+                      </div>
+                      <div style={css('background:#F7F5FA;border-radius:12px;padding:12px;text-align:center')}>
+                        <div style={css("font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:#211A2E")}>{t.memberCount}</div>
+                        <div style={css('font-size:11px;color:#9A8FA8;margin-top:2px')}>สมาชิก</div>
+                      </div>
+                    </div>
+                    <div style={css('margin-top:12px;display:flex;align-items:center;gap:8px;font-size:12px;color:#9A6A1A;background:#FFF6E9;padding:9px 12px;border-radius:10px')}>{V.truckMiniIcon} {t.vehicles}</div>
+                  </Box>
+                ))}
+              </div>
+            )}
+
+            {/* ============ VEHICLES ============ */}
+            {V.isVehicles && (
+              <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto')}>
+                <div style={css('display:flex;justify-content:flex-end;margin-bottom:16px')}>
+                  <Box tag="button" onClick={V.openAddVehicle} s="height:42px;padding:0 18px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(139,47,168,.28);transition:all .16s" h="transform:translateY(-1px);box-shadow:0 10px 24px rgba(139,47,168,.4)">{V.plusIcon} เพิ่มทะเบียนรถ</Box>
+                </div>
+                <div style={css('display:grid;grid-template-columns:repeat(3,1fr);gap:14px')}>
+                  {V.vehicleRows.map((v,i)=>(
+                    <Box key={i} s="background:#fff;border:1px solid #ECEAF1;border-radius:16px;padding:18px;box-shadow:0 1px 2px rgba(33,26,46,.04);transition:all .18s" h="transform:translateY(-2px);box-shadow:0 12px 28px rgba(122,35,168,.1)">
+                      <div style={css('display:flex;align-items:center;gap:13px;margin-bottom:14px')}>
+                        <span style={v.iconWrap}>{V.truckIcon}</span>
+                        <div style={css('flex:1;min-width:0')}>
+                          <div style={css("font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600")}>{v.plate}</div>
+                          <div style={css('font-size:12px;color:#8A8398')}>{v.type}</div>
+                        </div>
+                      </div>
+                      <div style={css('display:flex;align-items:center;gap:8px;font-size:12.5px;color:#6E687C;background:#FAF8FC;padding:9px 12px;border-radius:10px')}>{V.teamMiniIcon} {v.team}</div>
+                    </Box>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        </main>
+
+        {/* ===================== TOAST ===================== */}
+        {V.toastOpen && (
+          <div style={css('position:fixed;bottom:26px;right:26px;z-index:80;animation:toastIn .3s cubic-bezier(.18,.89,.32,1.28)')}>
+            <div style={V.toastStyle}>
+              <span style={V.toastIconWrap}>{V.toastIcon}</span>
+              <div>
+                <div style={css('font-size:13.5px;font-weight:600')}>{V.toastTitle}</div>
+                <div style={css('font-size:12px;color:#8A8398')}>{V.toastMsg}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== DETAIL DRAWER ===================== */}
+        {V.detailOpen && (
+          <div onClick={V.closeDetail} style={css('position:fixed;inset:0;background:rgba(33,18,46,.42);backdrop-filter:blur(3px);z-index:85;animation:overlayIn .2s ease')}>
+            <div onClick={V.stop} style={css('position:absolute;right:0;top:0;height:100vh;width:540px;max-width:92vw;background:#F6F4FA;box-shadow:-24px 0 70px rgba(33,18,46,.3);display:flex;flex-direction:column;animation:fadeUp .3s ease')}>
+              <div style={css('background:linear-gradient(135deg,#3E1457,#6A2490);color:#fff;padding:22px 24px;flex-shrink:0')}>
+                <div style={css('display:flex;align-items:center;gap:14px')}>
+                  <div style={css('width:54px;height:54px;border-radius:15px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:22px;flex-shrink:0')}>{V.detailAvatar}</div>
+                  <div style={css('flex:1;min-width:0')}>
+                    <div style={css('font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:6px')}>{V.detailHeadIcon} ประวัติการเบิกจ่าย</div>
+                    <div style={css('font-size:19px;font-weight:600;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{V.detailName}</div>
+                    <div style={css('font-size:12.5px;color:rgba(255,255,255,.65)')}>{V.detailSub}</div>
+                  </div>
+                  <Box tag="button" onClick={V.closeDetail} s="width:36px;height:36px;border-radius:10px;border:none;background:rgba(255,255,255,.14);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s" h="background:rgba(255,255,255,.28)">{V.closeIcon}</Box>
+                </div>
+                <div style={css('display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:18px')}>
+                  <div style={css('background:rgba(255,255,255,.12);border-radius:12px;padding:12px;text-align:center')}>
+                    <div style={css("font-family:'IBM Plex Mono',monospace;font-size:21px;font-weight:600")}>{V.detailCount}</div>
+                    <div style={css('font-size:11px;color:rgba(255,255,255,.6);margin-top:1px')}>ครั้งที่เบิก</div>
+                  </div>
+                  <div style={css('background:rgba(255,255,255,.12);border-radius:12px;padding:12px;text-align:center')}>
+                    <div style={css("font-family:'IBM Plex Mono',monospace;font-size:21px;font-weight:600")}>{V.detailTotal}</div>
+                    <div style={css('font-size:11px;color:rgba(255,255,255,.6);margin-top:1px')}>ชิ้นสะสม</div>
+                  </div>
+                  <div style={css('background:rgba(255,255,255,.12);border-radius:12px;padding:12px;text-align:center')}>
+                    <div style={css('font-size:14px;font-weight:600;line-height:1.5;margin-top:3px')}>{V.detailLatest}</div>
+                    <div style={css('font-size:11px;color:rgba(255,255,255,.6)')}>เบิกล่าสุด</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={css('flex:1;overflow-y:auto;padding:20px 24px 40px;display:flex;flex-direction:column;gap:18px')}>
+                {V.detailIsTeam && (
+                  <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:16px;padding:16px 18px')}>
+                    <div style={css('font-size:11px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px')}>สมาชิกในชุด</div>
+                    <div style={css('display:flex;flex-wrap:wrap;gap:7px')}>
+                      {V.detailMembers.map((mb,i)=>(<span key={i} style={css('font-size:12.5px;background:#F6EEFA;border:1px solid #ECDDF2;color:#5A4D68;padding:5px 11px;border-radius:20px')}>{mb}</span>))}
+                    </div>
+                    <div style={css('font-size:11px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.6px;margin:14px 0 9px')}>ยานพาหนะประจำชุด</div>
+                    <div style={css('display:flex;flex-wrap:wrap;gap:7px')}>
+                      {V.detailVehicles.map((v,i)=>(<span key={i} style={css('font-size:12.5px;background:#FFF6E9;border:1px solid #F3E2C4;color:#9A6A1A;padding:5px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:6px')}>{V.truckMiniIcon} {v}</span>))}
+                    </div>
+                  </div>
+                )}
+
+                {V.detailEmpty && <div style={css('background:#fff;border:1.5px dashed #E7E2EF;border-radius:16px;padding:40px 20px;text-align:center;color:#B4ABC2;font-size:13.5px')}>ยังไม่มีประวัติการเบิกจ่าย</div>}
+
+                <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04)')}>
+                  <div style={css('padding:15px 18px;border-bottom:1px solid #F2EEF7;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px')}>{V.boxIcon} สรุปอุปกรณ์ที่เบิกสะสม</div>
+                  {V.detailAgg.map((a,i)=>(
+                    <div key={i} style={css('display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid #F7F4FA')}>
+                      <div style={css('flex:1;min-width:0')}>
+                        <div style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{a.item}</div>
+                        <div style={css('font-size:11.5px;color:#A79FB6')}>{a.times} · ล่าสุด {a.last}</div>
+                      </div>
+                      <span style={css("font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:#8B2FA8;background:#F6EEFA;padding:5px 12px;border-radius:9px;white-space:nowrap")}>{a.qty}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04)')}>
+                  <div style={css('padding:15px 18px;border-bottom:1px solid #F2EEF7;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px')}>{V.calendarIcon} รายการเบิกทั้งหมด</div>
+                  {V.detailMoves.map((m,i)=>(
+                    <div key={i} style={css('display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid #F7F4FA')}>
+                      <span style={css('width:34px;height:34px;border-radius:10px;background:#F3EAF8;color:#8B2FA8;display:flex;align-items:center;justify-content:center;flex-shrink:0')}>{V.issueMiniIcon}</span>
+                      <div style={css('flex:1;min-width:0')}>
+                        <div style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{m.item}</div>
+                        <div style={css('font-size:11.5px;color:#A79FB6')}>{m.date} · {m.kindLabel} · {m.ref}</div>
+                      </div>
+                      <span style={css("font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600;color:#8B2FA8;flex-shrink:0")}>{m.qty}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== MODAL ===================== */}
+        {V.modalOpen && (
+          <div onClick={V.closeModal} style={css('position:fixed;inset:0;background:rgba(33,18,46,.42);backdrop-filter:blur(3px);z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;animation:overlayIn .2s ease')}>
+            <div onClick={V.stop} style={css('width:100%;max-width:480px;background:#fff;border-radius:20px;box-shadow:0 30px 80px rgba(33,18,46,.4);overflow:hidden;animation:modalIn .28s cubic-bezier(.18,.89,.32,1.28)')}>
+              <div style={css('padding:20px 24px;border-bottom:1px solid #F0EDF5;display:flex;align-items:center;justify-content:space-between')}>
+                <div style={css('font-size:16px;font-weight:600;display:flex;align-items:center;gap:9px')}><span style={css('color:#8B2FA8')}>{V.plusIcon}</span>{V.modalTitle}</div>
+                <Box tag="button" onClick={V.closeModal} s="width:34px;height:34px;border-radius:9px;border:none;background:#F5F2F9;color:#8A8398;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="background:#FBEAEA;color:#D5443F">{V.closeIcon}</Box>
+              </div>
+              <div style={css('padding:22px 24px;display:flex;flex-direction:column;gap:14px')}>
+
+                {V.modalIsItem && (<>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ชื่ออุปกรณ์</label>
+                    <Box tag="input" id="ai_name" placeholder="เช่น ถุงมือกันบาด" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                  </div>
+                  <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:12px')}>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>หมวดหมู่</label>
+                      <div style={css('position:relative')}>
+                        <Box tag="select" id="ai_cat" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f="border-color:#B97FCE;background:#fff">
+                          {V.catOptions.map((c,i)=>(<option key={i} value={c}>{c}</option>))}
+                        </Box>
+                        <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>หน่วยนับ</label>
+                      <Box tag="input" id="ai_unit" placeholder="คู่ / อัน / ชุด" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                    </div>
+                  </div>
+                  <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:12px')}>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>จำนวนเริ่มต้น</label>
+                      <Box tag="input" id="ai_qty" type="number" min="0" defaultValue="0" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px;font-family:'IBM Plex Mono',monospace" f="border-color:#B97FCE;background:#fff" />
+                    </div>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>จุดสั่งซื้อขั้นต่ำ</label>
+                      <Box tag="input" id="ai_min" type="number" min="0" defaultValue="5" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px;font-family:'IBM Plex Mono',monospace" f="border-color:#B97FCE;background:#fff" />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>จุดจัดเก็บ</label>
+                    <Box tag="input" id="ai_loc" placeholder="เช่น ชั้น A-2" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                  </div>
+                  <Box tag="button" onClick={V.submitAddItem} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกรายการ</Box>
+                </>)}
+
+                {V.modalIsWorker && (<>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ชื่อ – สกุล</label>
+                    <Box tag="input" id="aw_name" placeholder="เช่น สมชาย ใจดี" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ตำแหน่งงาน</label>
+                    <Box tag="input" id="aw_pos" placeholder="เช่น พนักงานช่าง 3" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>แผนก</label>
+                    <div style={css('position:relative')}>
+                      <Box tag="select" id="aw_dept" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f="border-color:#B97FCE;background:#fff">
+                        {V.deptOptions.map((d,i)=>(<option key={i} value={d}>{d}</option>))}
+                      </Box>
+                      <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                    </div>
+                  </div>
+                  <Box tag="button" onClick={V.submitAddWorker} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกผู้ปฏิบัติงาน</Box>
+                </>)}
+
+                {V.modalIsVehicle && (<>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ทะเบียนรถ</label>
+                    <Box tag="input" id="av_plate" placeholder="เช่น ผก-1234 เบตง" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px;font-family:'IBM Plex Mono',monospace" f="border-color:#B97FCE;background:#fff" />
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ประเภทรถ</label>
+                    <div style={css('position:relative')}>
+                      <Box tag="select" id="av_type" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f="border-color:#B97FCE;background:#fff">
+                        {V.vtypeOptions.map((t,i)=>(<option key={i} value={t}>{t}</option>))}
+                      </Box>
+                      <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ชุดงานที่สังกัด</label>
+                    <Box tag="input" id="av_team" placeholder="เช่น ชุดปฏิบัติการที่ 1" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                  </div>
+                  <Box tag="button" onClick={V.submitAddVehicle} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกทะเบียนรถ</Box>
+                </>)}
+
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    );
+  }
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+</script>
+</body>
+</html>
