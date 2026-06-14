@@ -177,6 +177,8 @@ const db = {
   async insertTeam(t){ const { error } = await sb.from('teams').insert({ id:t.id, name:t.name, lead_id:t.leadId||null, member_ids:t.memberIds, plates:t.plates }); if(error) throw error; },
   async updateTeam(id, data){ const { error } = await sb.from('teams').update(data).eq('id', id); if(error) throw error; },
   async deleteTeam(id){ const { error } = await sb.from('teams').delete().eq('id', id); if(error) throw error; },
+  async updateMovement(id, data){ const { error } = await sb.from('movements').update(data).eq('id', id); if(error) throw error; },
+  async deleteMovement(id){ const { error } = await sb.from('movements').delete().eq('id', id); if(error) throw error; },
 };
 window.__db = db;
 window.__sb = sb;
@@ -466,6 +468,18 @@ class App extends React.Component {
     catch(e){ this.toast('แก้ไขไม่สำเร็จ',e.message,'danger'); }
     else this.toast('แก้ไขสำเร็จ',name,'success');
   }
+  openEditMovement(m){ if(!this.requireAdmin()) return; this.setState({ editData:{ type:'movement', id:m.id, mvType:m.type, item:m.item, qty:String(m.qty), party:m.party||'', sub:m.sub||'', ref:m.ref||'', dateText:m.date||'', isoDate:todayISO() } }); }
+  async submitEditMovement(){
+    const d=this.state.editData; if(!d) return;
+    const item=(d.item||'').trim(), party=(d.party||'').trim();
+    if(!item){ this.toast('กรุณากรอกรายการอุปกรณ์','','warn'); return; }
+    const qty=Number(d.qty)||1;
+    const dateText=d.isoDate ? thaiFromISO(d.isoDate) : d.dateText;
+    this.setState(s=>({ movements:s.movements.map(m=>m.id===d.id?{...m,item,qty,party,sub:d.sub||'',date:dateText}:m), editData:null }));
+    if(SB_READY) try{ await db.updateMovement(d.id,{item,qty,party,sub:d.sub||'',date_text:dateText}); this.toast('แก้ไขสำเร็จ',item,'success'); }
+    catch(e){ this.toast('แก้ไขไม่สำเร็จ',e.message,'danger'); }
+    else this.toast('แก้ไขสำเร็จ',item,'success');
+  }
   openDeleteConfirm(type,id,name){ if(!this.requireAdmin()) return; this.setState({ deleteConfirm:{type,id,name} }); }
   async executeDelete(){
     const dc=this.state.deleteConfirm; if(!dc) return;
@@ -483,6 +497,11 @@ class App extends React.Component {
     } else if(dc.type==='team'){
       this.setState(s=>({ teams:s.teams.filter(t=>t.id!==dc.id) }));
       if(SB_READY) try{ await db.deleteTeam(dc.id); this.toast('ลบแล้ว',dc.name,'success'); }
+      catch(e){ this.toast('ลบไม่สำเร็จ',e.message,'danger'); }
+      else this.toast('ลบแล้ว',dc.name,'success');
+    } else if(dc.type==='movement'){
+      this.setState(s=>({ movements:s.movements.filter(m=>m.id!==dc.id) }));
+      if(SB_READY) try{ await db.deleteMovement(dc.id); this.toast('ลบแล้ว',dc.name,'success'); }
       catch(e){ this.toast('ลบไม่สำเร็จ',e.message,'danger'); }
       else this.toast('ลบแล้ว',dc.name,'success');
     }
@@ -828,11 +847,13 @@ class App extends React.Component {
         style:{height:36,padding:'0 18px',borderRadius:10,border:'1px solid '+(active?'#8B2FA8':'#E7E2EF'),background:active?'#8B2FA8':'#fff',color:active?'#fff':'#6E687C',fontSize:13.5,fontWeight:500,cursor:'pointer',transition:'all .15s'} };
     });
     const histRows=S.movements.filter(m=>S.histFilter==='all'||m.type===S.histFilter).map(m=>{ const isIn=m.type==='in';
-      return { date:m.date, item:m.item, party:m.party, sub:m.sub, ref:m.ref,
+      return { id:m.id, date:m.date, item:m.item, party:m.party, sub:m.sub, ref:m.ref,
         typeIcon:I(isIn?'stockin':'issue',13), typeLabel:isIn?'รับเข้า':'จ่ายออก',
         typeStyle:{display:'inline-flex',alignItems:'center',gap:5,fontSize:12,fontWeight:600,color:isIn?'#1E9E6A':'#8B2FA8',background:isIn?'#E7F6EF':'#F3EAF8',padding:'4px 10px',borderRadius:20,justifySelf:'start',whiteSpace:'nowrap'},
         qtyText:(isIn?'+':'-')+m.qty+' '+m.unit,
-        qtyStyle:{textAlign:'center',fontFamily:"'IBM Plex Mono',monospace",fontSize:13.5,fontWeight:600,color:isIn?'#1E9E6A':'#8B2FA8'} };
+        qtyStyle:{textAlign:'center',fontFamily:"'IBM Plex Mono',monospace",fontSize:13.5,fontWeight:600,color:isIn?'#1E9E6A':'#8B2FA8'},
+        onEdit:()=>this.openEditMovement(m),
+        onDelete:()=>this.openDeleteConfirm('movement',m.id,m.item) };
     });
 
     const its=S.items; const okN=its.filter(i=>i.qty>i.min).length, lowN=its.filter(i=>i.qty>0&&i.qty<=i.min).length, outN=its.filter(i=>i.qty<=0).length;
@@ -964,6 +985,7 @@ class App extends React.Component {
       editDataOpen:!!S.editData, editDataType:S.editData?S.editData.type:null, editData:S.editData||{},
       setEditField:(f,v)=>this.setEditField(f,v),
       submitEditWorker:()=>this.submitEditWorker(), submitEditItem:()=>this.submitEditItem(),
+      submitEditMovement:()=>this.submitEditMovement(),
       closeEditData:()=>this.setState({editData:null}),
       deleteConfirmOpen:!!S.deleteConfirm, deleteConfirmName:S.deleteConfirm?S.deleteConfirm.name:'',
       executeDelete:()=>this.executeDelete(), closeDeleteConfirm:()=>this.setState({deleteConfirm:null}),
@@ -1455,12 +1477,12 @@ class App extends React.Component {
                   {V.histFilters.map((f,i)=>(<button key={i} onClick={f.onClick} style={f.style}>{f.label}</button>))}
                 </div>
                 <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)')}>
-                  <div style={css('display:grid;grid-template-columns:120px 110px 2fr 1.6fr 1fr 110px;gap:14px;padding:14px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
-                    <span>วันที่</span><span>ประเภท</span><span>รายการ</span><span>ผู้รับ / ชุดงาน</span><span style={css('text-align:center')}>จำนวน</span><span style={css('text-align:right')}>เลขที่</span>
+                  <div style={css('display:grid;grid-template-columns:120px 110px 2fr 1.6fr 1fr 110px'+(V.isAdmin?' 72px':'')+';gap:14px;padding:14px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
+                    <span>วันที่</span><span>ประเภท</span><span>รายการ</span><span>ผู้รับ / ชุดงาน</span><span style={css('text-align:center')}>จำนวน</span><span style={css('text-align:right')}>เลขที่</span>{V.isAdmin && <span style={css('text-align:center')}>จัดการ</span>}
                   </div>
                   <div>
                     {V.histRows.map((h,i)=>(
-                      <Box key={i} s="display:grid;grid-template-columns:120px 110px 2fr 1.6fr 1fr 110px;gap:14px;padding:14px 22px;border-bottom:1px solid #F5F2F9;align-items:center;transition:background .15s" h="background:#FCFAFE">
+                      <Box key={i} s={'display:grid;grid-template-columns:120px 110px 2fr 1.6fr 1fr 110px'+(V.isAdmin?' 72px':'')+';gap:14px;padding:14px 22px;border-bottom:1px solid #F5F2F9;align-items:center;transition:background .15s'} h="background:#FCFAFE">
                         <span style={css('font-size:12.5px;color:#6E687C')}>{h.date}</span>
                         <span style={h.typeStyle}>{h.typeIcon} {h.typeLabel}</span>
                         <span style={css('font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h.item}</span>
@@ -1470,6 +1492,12 @@ class App extends React.Component {
                         </div>
                         <span style={h.qtyStyle}>{h.qtyText}</span>
                         <span style={css("font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9A8FA8;text-align:right")}>{h.ref}</span>
+                        {V.isAdmin && (
+                          <div style={css('display:flex;align-items:center;justify-content:center;gap:5px')}>
+                            <Box tag="button" onClick={h.onEdit} s="width:30px;height:30px;border-radius:8px;border:none;background:#F5F0FA;color:#8B2FA8;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="background:#8B2FA8;color:#fff">{V.penIcon}</Box>
+                            <Box tag="button" onClick={h.onDelete} s="width:30px;height:30px;border-radius:8px;border:none;background:transparent;color:#C0B8CC;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="background:#FBEAEA;color:#D5443F">{V.trashIcon}</Box>
+                          </div>
+                        )}
                       </Box>
                     ))}
                   </div>
@@ -1733,7 +1761,7 @@ class App extends React.Component {
           <div onClick={V.closeEditData} style={css('position:fixed;inset:0;background:rgba(33,18,46,.42);backdrop-filter:blur(3px);z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;animation:overlayIn .2s ease')}>
             <div onClick={V.stop} style={css('width:100%;max-width:480px;background:#fff;border-radius:20px;box-shadow:0 30px 80px rgba(33,18,46,.4);overflow:hidden;animation:modalIn .28s cubic-bezier(.18,.89,.32,1.28)')}>
               <div style={css('padding:20px 24px;border-bottom:1px solid #F0EDF5;display:flex;align-items:center;justify-content:space-between')}>
-                <div style={css('font-size:16px;font-weight:600;display:flex;align-items:center;gap:9px')}><span style={css('color:#8B2FA8')}>{V.penIcon}</span>{V.editDataType==='worker'?'แก้ไขผู้ปฏิบัติงาน':'แก้ไขรายการอุปกรณ์'}</div>
+                <div style={css('font-size:16px;font-weight:600;display:flex;align-items:center;gap:9px')}><span style={css('color:#8B2FA8')}>{V.penIcon}</span>{V.editDataType==='worker'?'แก้ไขผู้ปฏิบัติงาน':V.editDataType==='movement'?'แก้ไขรายการประวัติ':V.editDataType==='team'?'แก้ไขชุดปฏิบัติงาน':'แก้ไขรายการอุปกรณ์'}</div>
                 <Box tag="button" onClick={V.closeEditData} s="width:34px;height:34px;border-radius:9px;border:none;background:#F5F2F9;color:#8A8398;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="background:#FBEAEA;color:#D5443F">{V.closeIcon}</Box>
               </div>
               <div style={css('padding:22px 24px;display:flex;flex-direction:column;gap:14px')}>
@@ -1838,6 +1866,36 @@ class App extends React.Component {
                     </div>
                   )}
                   <Box tag="button" onClick={V.submitEditTeam} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกการแก้ไข</Box>
+                </>)}
+                {V.editDataType==='movement' && (<>
+                  <div style={css('background:#FAF4FC;border-radius:11px;padding:10px 14px;font-size:12.5px;color:#7A6E88')}>
+                    <span style={css('font-weight:600;color:#5A4D68')}>วันที่เดิม: </span>{V.editData.dateText||'—'}
+                    {'  ·  '}<span style={css('font-weight:600;color:#5A4D68')}>{V.editData.mvType==='in'?'รับเข้า':'จ่ายออก'}</span>
+                    {'  ·  เลขที่ '}{V.editData.ref||'—'}
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>วันที่ใหม่</label>
+                    <Box tag="input" type="date" value={V.editData.isoDate||''} onChange={(e)=>V.setEditField('isoDate',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>รายการอุปกรณ์</label>
+                    <Box tag="input" value={V.editData.item||''} onChange={(e)=>V.setEditField('item',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+                  </div>
+                  <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:12px')}>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>จำนวน</label>
+                      <Box tag="input" type="number" min="1" value={V.editData.qty||''} onChange={(e)=>V.setEditField('qty',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px;font-family:'IBM Plex Mono',monospace" f={FIELD_FOCUS} />
+                    </div>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ผู้รับ / แหล่งที่มา</label>
+                      <Box tag="input" value={V.editData.party||''} onChange={(e)=>V.setEditField('party',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>หน่วยงาน / หมายเหตุ</label>
+                    <Box tag="input" value={V.editData.sub||''} onChange={(e)=>V.setEditField('sub',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+                  </div>
+                  <Box tag="button" onClick={V.submitEditMovement} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกการแก้ไข</Box>
                 </>)}
               </div>
             </div>
