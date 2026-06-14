@@ -82,6 +82,11 @@ function Box({ tag='div', s, h, f, children, onMouseEnter, onMouseLeave, onFocus
 
 const CARD = 'background:#fff;border:1px solid #ECEAF1;border-radius:18px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)';
 const FIELD_FOCUS = 'border-color:#B97FCE;background:#fff;box-shadow:0 0 0 4px rgba(139,47,168,.10)';
+const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+// วันนี้ในรูปแบบ ISO (yyyy-mm-dd) ตามเวลาเครื่อง
+function todayISO(){ const d=new Date(); const p=(n)=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+// แปลง yyyy-mm-dd → "14 มิ.ย. 69" (พ.ศ. 2 หลัก)
+function thaiFromISO(iso){ if(!iso) return ''; const p=iso.split('-'); if(p.length<3) return ''; const y=+p[0],mo=+p[1],da=+p[2]; return da+' '+THAI_MONTHS[mo-1]+' '+((y+543)%100); }
 
 // SearchSelect: dropdown ที่พิมพ์ค้นหาได้ (combobox)
 function SearchSelect({ value, options, onChange, placeholder, size }){
@@ -324,7 +329,9 @@ class App extends React.Component {
     toast: null,
     sigInk: false,
     issue: { kind:'individual', recipientId:'', lineItem:'', lineQty:1, lines:[], note:'' },
+    issueDate: todayISO(),
     siItem: '',
+    siDate: todayISO(),
     refSeq: 24,
     items: [
       { id:'i1', code:'PPE-001', name:'หมวกนิรภัย (Safety Helmet)', cat:'ศีรษะ', unit:'ใบ', qty:42, min:15, loc:'ชั้น A-1' },
@@ -623,13 +630,13 @@ class App extends React.Component {
     let party='', sub='';
     if(is.kind==='individual'){ const w=this.state.workers.find(x=>x.id===is.recipientId); party=w.name; sub=w.dept; }
     else { const t=this.state.teams.find(x=>x.id===is.recipientId); party=t.name; sub='รถ '+(t.plates.join(', ')||'-'); }
-    const seq=this.state.refSeq+1; const ref='ISS-'+String(seq).padStart(4,'0'); const date=this.thaiToday();
+    const seq=this.state.refSeq+1; const ref='ISS-'+String(seq).padStart(4,'0'); const date=thaiFromISO(this.state.issueDate)||this.thaiToday();
     const newMoves=[];
     const movedIds=[];
     for(const l of is.lines){ const it=items.find(x=>x.id===l.itemId); it.qty-=l.qty; movedIds.push(l.itemId);
       newMoves.push({ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'out', kind:is.kind, item:it.name, qty:l.qty, unit:it.unit, party, sub, ref, date }); }
     this.setState({ items, movements:[...newMoves, ...this.state.movements], refSeq:seq,
-      issue:{ kind:is.kind, recipientId:'', lineItem:'', lineQty:1, lines:[], note:'' }, sigInk:false });
+      issue:{ kind:is.kind, recipientId:'', lineItem:'', lineQty:1, lines:[], note:'' }, issueDate:todayISO(), sigInk:false });
     this.clearSig();
     if(SB_READY){
       try {
@@ -650,8 +657,8 @@ class App extends React.Component {
     const items=this.state.items.map(x=>x.id===id?{...x,qty:x.qty+qty}:x);
     const it=items.find(x=>x.id===id);
     const seq=this.state.movements.filter(m=>m.type==='in').length+41; const ref='RCV-'+String(seq).padStart(4,'0');
-    const mv={ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'in', kind:null, item:it.name, qty, unit:it.unit, party:by, sub:lot, ref, date:this.thaiToday() };
-    this.setState({ items, movements:[mv, ...this.state.movements], siItem:'' });
+    const mv={ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'in', kind:null, item:it.name, qty, unit:it.unit, party:by, sub:lot, ref, date:thaiFromISO(this.state.siDate)||this.thaiToday() };
+    this.setState({ items, movements:[mv, ...this.state.movements], siItem:'', siDate:todayISO() });
     const el=document.getElementById('si_lot'); if(el) el.value=''; const el2=document.getElementById('si_by'); if(el2) el2.value='';
     if(SB_READY){
       try { await db.updateItemQty(id, it.qty); await db.insertMovements([mv]); }
@@ -975,7 +982,9 @@ class App extends React.Component {
       lineDraftItem:is.lineItem, lineDraftQty:is.lineQty,
       onLineItem:(e)=>this.setIssue({lineItem:e.target.value}), onLineItemVal:(val)=>this.setIssue({lineItem:val}), onLineQty:(e)=>this.setIssue({lineQty:e.target.value}),
       addLine:()=>this.addLine(), issueLines, hasLines:is.lines.length>0, noLines:is.lines.length===0, lineCount:is.lines.length,
-      totalQty, ticketRecipient, issueRefStr:nextRef, issueDateStr:this.thaiToday(),
+      totalQty, ticketRecipient, issueRefStr:nextRef, issueDateStr:thaiFromISO(S.issueDate)||this.thaiToday(),
+      issueDate:S.issueDate, onIssueDate:(e)=>this.setState({issueDate:e.target.value}),
+      siDate:S.siDate, onSiDate:(e)=>this.setState({siDate:e.target.value}),
       sigRef:(el)=>{ if(el && el!==this._sigEl){ this._sigEl=el; requestAnimationFrame(()=>this.initSig(el)); } },
       clearSig:()=>this.clearSig(), sigEmpty:!S.sigInk, submitIssue:()=>this.submitIssue(),
 
@@ -1255,6 +1264,10 @@ class App extends React.Component {
                           )}
                         </div>
                       )}
+                      <div style={css('margin-top:16px')}>
+                        <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>วันที่เบิก</label>
+                        <Box tag="input" type="date" value={V.issueDate} onChange={V.onIssueDate} s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px;font-size:14px" f={FIELD_FOCUS} />
+                      </div>
                     </div>
 
                     <div style={css(CARD+';padding:22px')}>
@@ -1358,6 +1371,10 @@ class App extends React.Component {
                     <div>
                       <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ผู้รับเข้า / แหล่งที่มา</label>
                       <Box tag="input" id="si_by" placeholder="เช่น คลังพัสดุกลาง / ผู้จัดส่ง" s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px;font-size:14px" f="border-color:#B97FCE;background:#fff" />
+                    </div>
+                    <div>
+                      <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>วันที่รับเข้า</label>
+                      <Box tag="input" type="date" value={V.siDate} onChange={V.onSiDate} s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px;font-size:14px" f={FIELD_FOCUS} />
                     </div>
                     <Box tag="button" onClick={V.submitStockIn} s="height:50px;border-radius:13px;border:none;background:linear-gradient(120deg,#1E9E6A,#15B57A);color:#fff;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 8px 22px rgba(30,158,106,.3);transition:all .16s" h="transform:translateY(-2px);box-shadow:0 12px 28px rgba(30,158,106,.4)">{V.checkIcon} บันทึกรับเข้า</Box>
                   </div>
