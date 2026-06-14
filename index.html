@@ -732,13 +732,23 @@ class App extends React.Component {
 
   // ---------- charts ----------
   buildTrend(){
-    const tr=this.state.trend; const max=Math.max(1, ...tr.map(d=>Math.max(d.in,d.out)));
-    const bars=tr.map((d,i)=>React.createElement('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:8}},
+    const THAI_DAY=['อา','จ','อ','พ','พฤ','ศ','ส'];
+    const now=new Date(); const p=n=>String(n).padStart(2,'0');
+    const days=[];
+    for(let i=6;i>=0;i--){ const d=new Date(now); d.setDate(d.getDate()-i);
+      const iso=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+      days.push({iso,label:THAI_DAY[d.getDay()],in:0,out:0}); }
+    this.state.movements.forEach(m=>{
+      const day=days.find(d=>thaiFromISO(d.iso)===m.date);
+      if(day){ if(m.type==='in') day.in+=m.qty; else day.out+=m.qty; }
+    });
+    const max=Math.max(1,...days.map(d=>Math.max(d.in,d.out)));
+    const bars=days.map((d,i)=>React.createElement('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:8}},
       React.createElement('div',{style:{flex:1,width:'100%',display:'flex',alignItems:'flex-end',justifyContent:'center',gap:5}},
         React.createElement('div',{style:{width:13,height:Math.max(3,d.in/max*100)+'%',background:'linear-gradient(180deg,#A24FC2,#8B2FA8)',borderRadius:'5px 5px 0 0',transformOrigin:'bottom',animation:'barGrow .6s ease '+(i*0.05)+'s both'}}),
         React.createElement('div',{style:{width:13,height:Math.max(3,d.out/max*100)+'%',background:'linear-gradient(180deg,#EDB05A,#E0902A)',borderRadius:'5px 5px 0 0',transformOrigin:'bottom',animation:'barGrow .6s ease '+(i*0.05+0.08)+'s both'}})
       ),
-      React.createElement('span',{style:{fontSize:11.5,color:'#9A8FA8'}},d.d)
+      React.createElement('span',{style:{fontSize:11.5,color:'#9A8FA8'}},d.label)
     ));
     return React.createElement('div',{style:{height:200,display:'flex',gap:6,alignItems:'stretch',marginTop:14}},bars);
   }
