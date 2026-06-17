@@ -1,0 +1,14 @@
+{
+  "name": "PPE Stock เบตง",
+  "short_name": "PPE Stock",
+  "description": "ระบบจัดการคลัง PPE การไฟฟ้าส่วนภูมิภาคอำเภอเบตง",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#2B0F3E",
+  "theme_color": "#3E1457",
+  "icons": [
+    { "src": "icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
