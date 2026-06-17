@@ -320,6 +320,8 @@ class App extends React.Component {
     invSort: { key:'code', dir:'asc' },
     histFilter: 'all',
     donutFilter: null,
+    isMobile: typeof window!=='undefined' && window.innerWidth < 768,
+    navOpen: false,
     reportTab: 'stock',
     globalSearch: '',
     modal: null,
@@ -409,8 +411,10 @@ class App extends React.Component {
   componentDidMount(){
     if(SB_READY){ this.setState({ loading:true }); this.reloadFromDb(); }
     else { this.animateKpis(); }
+    this._onResize=()=>this.setState({isMobile:window.innerWidth<768,navOpen:false});
+    window.addEventListener('resize',this._onResize);
   }
-  componentWillUnmount(){ cancelAnimationFrame(this._raf); clearTimeout(this._tt); }
+  componentWillUnmount(){ cancelAnimationFrame(this._raf); clearTimeout(this._tt); window.removeEventListener('resize',this._onResize); }
   async reloadFromDb(){
     try {
       const all = await db.loadAll();
@@ -781,7 +785,7 @@ class App extends React.Component {
 
     const mk=(key,label,icon,badge)=>{
       const active=S.view===key;
-      return { label, icon:I(icon), onClick:()=>this.nav(key),
+      return { label, icon:I(icon), onClick:()=>{ this.nav(key); if(S.isMobile) this.setState({navOpen:false}); },
         rowStyle:{ display:'flex',alignItems:'center',gap:11,padding:'9px 12px',borderRadius:11,cursor:'pointer',fontSize:14,fontWeight:500,transition:'all .18s',
           color: active?'#fff':'rgba(255,255,255,.62)',
           background: active?'linear-gradient(100deg,rgba(255,255,255,.18),rgba(255,255,255,.05))':'transparent',
@@ -1000,6 +1004,8 @@ class App extends React.Component {
       reportStockStyle:tabStyle(reportIsStock), reportMoveStyle:tabStyle(!reportIsStock),
       exportReport:()=>this.toast('กำลังเตรียมไฟล์','ระบบกำลังสร้างรายงาน Excel...','success'),
 
+      isMobile:S.isMobile, navOpen:S.navOpen,
+      toggleNav:()=>this.setState({navOpen:!S.navOpen}), closeNav:()=>this.setState({navOpen:false}),
       isAdmin:this.props.isAdmin, onLoginClick:this.props.onLoginClick,
       invGrid: this.props.isAdmin ? '90px 2.2fr 1fr 1.4fr 1.1fr 100px 72px' : '90px 2.2fr 1fr 1.4fr 1.1fr 100px',
       workerRows, openAddWorker:()=>this.openModal('worker'),
@@ -1065,7 +1071,7 @@ class App extends React.Component {
       <div style={css('display:flex;min-height:100vh;width:100%;background:#F4F2F8')}>
 
         {/* ===================== SIDEBAR ===================== */}
-        <aside style={css('width:264px;flex-shrink:0;background:linear-gradient(178deg,#3E1457 0%,#2B0F3E 60%,#250B36 100%);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh')}>
+        <aside style={Object.assign(css('width:264px;flex-shrink:0;background:linear-gradient(178deg,#3E1457 0%,#2B0F3E 60%,#250B36 100%);color:#fff;display:flex;flex-direction:column'), V.isMobile ? {position:'fixed',top:0,left:0,height:'100%',zIndex:200,transform:V.navOpen?'translateX(0)':'translateX(-264px)',transition:'transform .28s cubic-bezier(.4,0,.2,1)'} : {position:'sticky',top:0,height:'100vh'})}>
           <div style={css('padding:22px 22px 18px;display:flex;align-items:center;gap:13px;border-bottom:1px solid rgba(255,255,255,.08)')}>
             <div style={css('width:42px;height:42px;border-radius:13px;background:linear-gradient(140deg,#B0309C,#7A23A8);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;box-shadow:0 6px 16px rgba(176,48,156,.4);flex-shrink:0')}>PE</div>
             <div style={css('line-height:1.25;min-width:0')}>
@@ -1110,26 +1116,34 @@ class App extends React.Component {
           </div>
         </aside>
 
+        {/* Mobile overlay */}
+        {V.isMobile && V.navOpen && <div onClick={V.closeNav} style={css('position:fixed;inset:0;background:rgba(33,18,46,.5);z-index:199')} />}
+
         {/* ===================== MAIN ===================== */}
         <main style={css('flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;overflow:hidden')}>
 
           {/* TOPBAR */}
-          <header style={css('height:70px;flex-shrink:0;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);border-bottom:1px solid #EAE6F0;display:flex;align-items:center;gap:18px;padding:0 28px;position:relative;z-index:30')}>
-            <div style={css('display:flex;align-items:center;gap:13px;min-width:0')}>
-              <span style={css('width:38px;height:38px;border-radius:11px;background:#F3EAF8;color:#8B2FA8;display:flex;align-items:center;justify-content:center;flex-shrink:0')}>{V.pageIcon}</span>
+          <header style={css('height:70px;flex-shrink:0;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);border-bottom:1px solid #EAE6F0;display:flex;align-items:center;gap:'+(V.isMobile?'10':'18')+'px;padding:0 '+(V.isMobile?'14':'28')+'px;position:relative;z-index:30')}>
+            <div style={css('display:flex;align-items:center;gap:'+(V.isMobile?'8':'13')+'px;min-width:0')}>
+              {V.isMobile && (
+                <Box tag="button" onClick={V.toggleNav} s="width:38px;height:38px;border-radius:11px;border:none;background:#F3EAF8;color:#8B2FA8;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s" h="background:#8B2FA8;color:#fff">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                </Box>
+              )}
+              {!V.isMobile && <span style={css('width:38px;height:38px;border-radius:11px;background:#F3EAF8;color:#8B2FA8;display:flex;align-items:center;justify-content:center;flex-shrink:0')}>{V.pageIcon}</span>}
               <div style={css('line-height:1.25;min-width:0')}>
-                <div style={css('font-size:17px;font-weight:600;color:#211A2E;white-space:nowrap')}>{V.pageTitle}</div>
-                <div style={css('font-size:12px;color:#8A8398;white-space:nowrap')}>{V.pageSub}</div>
+                <div style={css('font-size:'+(V.isMobile?'14':'17')+'px;font-weight:600;color:#211A2E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{V.pageTitle}</div>
+                {!V.isMobile && <div style={css('font-size:12px;color:#8A8398;white-space:nowrap')}>{V.pageSub}</div>}
               </div>
             </div>
 
-            <div style={css('flex:1;display:flex;justify-content:center;max-width:420px;margin:0 auto')}>
+            {!V.isMobile && <div style={css('flex:1;display:flex;justify-content:center;max-width:420px;margin:0 auto')}>
               <div style={css('position:relative;width:100%')}>
                 <span style={css('position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.searchIcon}</span>
                 <Box tag="input" value={V.globalSearch} onChange={V.onSearch} placeholder="ค้นหาอุปกรณ์, ผู้ปฏิบัติงาน, ทะเบียนรถ..."
                   s="width:100%;height:42px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px 0 40px;font-size:13.5px;color:#211A2E;transition:all .18s" f={FIELD_FOCUS} />
               </div>
-            </div>
+            </div>}
 
             <div style={css('display:flex;align-items:center;gap:10px;flex-shrink:0')}>
               <div style={css('position:relative')}>
@@ -1170,12 +1184,12 @@ class App extends React.Component {
           </header>
 
           {/* CONTENT */}
-          <div data-scroll style={css('flex:1;overflow-y:auto;padding:26px 28px 60px')}>
+          <div data-scroll style={css('flex:1;overflow-y:auto;padding:'+(V.isMobile?'14px 12px 80px':'26px 28px 60px'))}>
 
             {/* ============ DASHBOARD ============ */}
             {V.isDashboard && (
               <div style={css('animation:fadeUp .42s ease;max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:20px')}>
-                <div style={css('display:grid;grid-template-columns:repeat(4,1fr);gap:16px')}>
+                <div style={css('display:grid;grid-template-columns:repeat('+(V.isMobile?'2':'4')+',1fr);gap:'+(V.isMobile?'10':'16')+'px')}>
                   {V.kpis.map((k,i)=>(
                     <Box key={i} s="background:#fff;border:1px solid #ECEAF1;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:13px;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05);transition:all .2s;position:relative;overflow:hidden" h="transform:translateY(-3px);box-shadow:0 16px 36px rgba(122,35,168,.13)">
                       <div style={css('display:flex;align-items:flex-start;justify-content:space-between')}>
@@ -1188,7 +1202,7 @@ class App extends React.Component {
                   ))}
                 </div>
 
-                <div style={css('display:grid;grid-template-columns:1.55fr 1fr;gap:16px')}>
+                <div style={css('display:grid;grid-template-columns:'+(V.isMobile?'1fr':'1.55fr 1fr')+';gap:16px')}>
                   <div style={css(CARD+';padding:22px')}>
                     <div style={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:6px')}>
                       <div>
@@ -1243,7 +1257,7 @@ class App extends React.Component {
                   </div>
                 </div>
 
-                <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:16px')}>
+                <div style={css('display:grid;grid-template-columns:'+(V.isMobile?'1fr':'1fr 1fr')+';gap:16px')}>
                   <div style={css(CARD+';padding:22px')}>
                     <div style={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:16px')}>
                       <div style={css('font-size:15px;font-weight:600;display:flex;align-items:center;gap:9px')}><span style={css('color:#D5443F')}>{V.alertIcon}</span>แจ้งเตือนสต็อกต่ำ</div>
@@ -1429,7 +1443,7 @@ class App extends React.Component {
                       <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>รายการอุปกรณ์</label>
                       <SearchSelect value={V.siItem} options={V.itemOptions} onChange={V.onSiItemVal} placeholder="— เลือกอุปกรณ์ —" />
                     </div>
-                    <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:13px')}>
+                    <div style={css('display:grid;grid-template-columns:'+(V.isMobile?'1fr':'1fr 1fr')+';gap:13px')}>
                       <div>
                         <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>จำนวนรับเข้า</label>
                         <Box tag="input" id="si_qty" type="number" min="1" defaultValue="10" s="width:100%;height:46px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px;font-size:14px;font-family:'IBM Plex Mono',monospace" f="border-color:#B97FCE;background:#fff" />
@@ -1483,6 +1497,7 @@ class App extends React.Component {
                 </div>
 
                 <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)')}>
+                 <div style={css('overflow-x:auto')}><div style={css('min-width:660px')}>
                   <div style={css('display:grid;grid-template-columns:'+V.invGrid+';gap:14px;padding:14px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
                     <Box tag="span" onClick={()=>V.sortInv('code')} s="cursor:pointer;user-select:none;transition:color .15s" h="color:#8B2FA8">รหัส{V.sortArrow('code')}</Box>
                     <Box tag="span" onClick={()=>V.sortInv('name')} s="cursor:pointer;user-select:none;transition:color .15s" h="color:#8B2FA8">รายการ{V.sortArrow('name')}</Box>
@@ -1515,6 +1530,7 @@ class App extends React.Component {
                       </Box>
                     ))}
                   </div>
+                 </div></div>
                 </div>
               </div>
             )}
@@ -1526,6 +1542,7 @@ class App extends React.Component {
                   {V.histFilters.map((f,i)=>(<button key={i} onClick={f.onClick} style={f.style}>{f.label}</button>))}
                 </div>
                 <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)')}>
+                 <div style={css('overflow-x:auto')}><div style={css('min-width:660px')}>
                   <div style={css('display:grid;grid-template-columns:120px 110px 2fr 1.6fr 1fr 110px'+(V.isAdmin?' 72px':'')+';gap:14px;padding:14px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
                     <span>วันที่</span><span>ประเภท</span><span>รายการ</span><span>ผู้รับ / ชุดงาน</span><span style={css('text-align:center')}>จำนวน</span><span style={css('text-align:right')}>เลขที่</span>{V.isAdmin && <span style={css('text-align:center')}>จัดการ</span>}
                   </div>
@@ -1550,6 +1567,7 @@ class App extends React.Component {
                       </Box>
                     ))}
                   </div>
+                 </div></div>
                 </div>
               </div>
             )}
@@ -1565,7 +1583,7 @@ class App extends React.Component {
                   <Box tag="button" onClick={V.exportReport} s="height:42px;padding:0 18px;border-radius:12px;border:1px solid #E7E2EF;background:#fff;color:#5A5368;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .15s" h="border-color:#C9AED9;color:#8B2FA8">{V.exportIcon} ส่งออก Excel</Box>
                 </div>
 
-                <div style={css('display:grid;grid-template-columns:repeat(4,1fr);gap:16px')}>
+                <div style={css('display:grid;grid-template-columns:repeat('+(V.isMobile?'2':'4')+',1fr);gap:'+(V.isMobile?'10':'16')+'px')}>
                   {V.reportStats.map((s,i)=>(
                     <div key={i} style={css('background:#fff;border:1px solid #ECEAF1;border-radius:16px;padding:18px;box-shadow:0 1px 2px rgba(33,26,46,.04)')}>
                       <div style={css('font-size:12.5px;color:#6E687C;margin-bottom:9px')}>{s.label}</div>
@@ -1577,6 +1595,7 @@ class App extends React.Component {
                 {V.reportIsStock && (
                   <div style={css('background:#fff;border:1px solid #ECEAF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(33,26,46,.04),0 10px 30px rgba(33,26,46,.05)')}>
                     <div style={css('padding:18px 22px;border-bottom:1px solid #F0EDF5;font-size:15px;font-weight:600')}>สรุปคงเหลือตามหมวดหมู่</div>
+                    <div style={css('overflow-x:auto')}><div style={css('min-width:480px')}>
                     <div style={css('display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:14px;padding:13px 22px;background:#FAF8FC;border-bottom:1px solid #EFEAF4;font-size:11.5px;font-weight:600;color:#9A8FA8;text-transform:uppercase;letter-spacing:.5px')}>
                       <span>หมวดหมู่</span><span style={css('text-align:center')}>จำนวนรายการ</span><span style={css('text-align:center')}>คงเหลือรวม</span><span style={css('text-align:center')}>สถานะต่ำกว่าเกณฑ์</span>
                     </div>
@@ -1588,6 +1607,7 @@ class App extends React.Component {
                         <span style={css('text-align:center')}>{c.lowBadge}</span>
                       </div>
                     ))}
+                    </div></div>
                   </div>
                 )}
 
