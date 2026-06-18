@@ -176,6 +176,8 @@ const db = {
   },
   async insertWorker(w){ const { error } = await sb.from('workers').insert(w); if(error) throw error; },
   async insertVehicle(v){ const { error } = await sb.from('vehicles').insert(v); if(error) throw error; },
+  async updateVehicle(id, data){ const { error } = await sb.from('vehicles').update(data).eq('id', id); if(error) throw error; },
+  async deleteVehicle(id){ const { error } = await sb.from('vehicles').delete().eq('id', id); if(error) throw error; },
   async insertMovements(rows){
     const mapped = rows.map(m=>({ id:m.id, type:m.type, kind:m.kind||null, item:m.item, qty:m.qty, unit:m.unit, party:m.party, sub:m.sub, ref:m.ref, date_text:m.date }));
     const { error } = await sb.from('movements').insert(mapped); if(error) throw error;
@@ -335,6 +337,7 @@ class App extends React.Component {
     donutFilter: null,
     isMobile: typeof window!=='undefined' && window.innerWidth < 768,
     navOpen: false,
+    searchOpen: false,
     reportTab: 'stock',
     globalSearch: '',
     modal: null,
@@ -506,12 +509,23 @@ class App extends React.Component {
     const d=this.state.editData; if(!d) return;
     const item=(d.item||'').trim(), party=(d.party||'').trim();
     if(!item){ this.toast('กรุณากรอกรายการอุปกรณ์','','warn'); return; }
-    const qty=Number(d.qty)||1;
+    const newQty=Number(d.qty)||1;
     const dateText=d.isoDate ? thaiFromISO(d.isoDate) : d.dateText;
-    this.setState(s=>({ movements:s.movements.map(m=>m.id===d.id?{...m,item,qty,party,sub:d.sub||'',date:dateText}:m), editData:null }));
-    if(SB_READY) try{ await db.updateMovement(d.id,{item,qty,party,sub:d.sub||'',date_text:dateText}); this.toast('แก้ไขสำเร็จ',item,'success'); }
-    catch(e){ this.toast('แก้ไขไม่สำเร็จ',e.message,'danger'); }
-    else this.toast('แก้ไขสำเร็จ',item,'success');
+    const m0=this.state.movements.find(m=>m.id===d.id);
+    // ปรับยอดคงเหลือ: ถอนผลของรายการเดิม แล้วใส่ผลของรายการใหม่ (sign +1=รับเข้า, -1=จ่ายออก)
+    const sign=(m0&&m0.type==='out')?-1:1;
+    const items=this.state.items.map(x=>({...x}));
+    const changed=new Set();
+    if(m0){ const oldIt=items.find(x=>x.name===m0.item); if(oldIt){ oldIt.qty-=sign*m0.qty; changed.add(oldIt.id); } }
+    const newIt=items.find(x=>x.name===item); if(newIt){ newIt.qty+=sign*newQty; changed.add(newIt.id); }
+    this.setState(s=>({ items, movements:s.movements.map(m=>m.id===d.id?{...m,item,qty:newQty,party,sub:d.sub||'',date:dateText}:m), editData:null }));
+    if(SB_READY){
+      try{
+        await db.updateMovement(d.id,{item,qty:newQty,party,sub:d.sub||'',date_text:dateText});
+        await Promise.all([...changed].map(id=>{ const it=items.find(x=>x.id===id); return db.updateItemQty(id, it.qty); }));
+        this.toast('แก้ไขสำเร็จ',item,'success');
+      } catch(e){ this.toast('แก้ไขไม่สำเร็จ',e.message,'danger'); }
+    } else this.toast('แก้ไขสำเร็จ',item,'success');
   }
   openDeleteConfirm(type,id,name){ if(!this.requireAdmin()) return; this.setState({ deleteConfirm:{type,id,name} }); }
   async executeDelete(){
@@ -533,8 +547,19 @@ class App extends React.Component {
       catch(e){ this.toast('ลบไม่สำเร็จ',e.message,'danger'); }
       else this.toast('ลบแล้ว',dc.name,'success');
     } else if(dc.type==='movement'){
-      this.setState(s=>({ movements:s.movements.filter(m=>m.id!==dc.id) }));
-      if(SB_READY) try{ await db.deleteMovement(dc.id); this.toast('ลบแล้ว',dc.name,'success'); }
+      // ถอนผลต่อคงเหลือของรายการที่ลบ (รับเข้า→ลดคืน, จ่ายออก→เพิ่มคืน)
+      const m0=this.state.movements.find(m=>m.id===dc.id);
+      const sign=(m0&&m0.type==='out')?-1:1;
+      const items=this.state.items.map(x=>({...x}));
+      let changedIt=null;
+      if(m0){ const it=items.find(x=>x.name===m0.item); if(it){ it.qty-=sign*m0.qty; changedIt=it; } }
+      this.setState(s=>({ items, movements:s.movements.filter(m=>m.id!==dc.id) }));
+      if(SB_READY) try{ await db.deleteMovement(dc.id); if(changedIt) await db.updateItemQty(changedIt.id, changedIt.qty); this.toast('ลบแล้ว',dc.name,'success'); }
+      catch(e){ this.toast('ลบไม่สำเร็จ',e.message,'danger'); }
+      else this.toast('ลบแล้ว',dc.name,'success');
+    } else if(dc.type==='vehicle'){
+      this.setState(s=>({ vehicles:s.vehicles.filter(v=>v.id!==dc.id) }));
+      if(SB_READY) try{ await db.deleteVehicle(dc.id); this.toast('ลบแล้ว',dc.name,'success'); }
       catch(e){ this.toast('ลบไม่สำเร็จ',e.message,'danger'); }
       else this.toast('ลบแล้ว',dc.name,'success');
     }
@@ -791,6 +816,16 @@ class App extends React.Component {
     }
     this.toast('เพิ่มทะเบียนรถสำเร็จ', plate+' · '+type,'success');
   }
+  openEditVehicle(v){ if(!this.requireAdmin()) return; this.setState({ editData:{ type:'vehicle', id:v.id, plate:v.plate, vtype:v.type, team:v.team } }); }
+  async submitEditVehicle(){
+    const d=this.state.editData; if(!d) return;
+    const plate=(d.plate||'').trim(); if(!plate){ this.toast('กรอกทะเบียน','กรุณาระบุทะเบียนรถ','warn'); return; }
+    const type=(d.vtype||'').trim()||'-', team=(d.team||'').trim()||'-';
+    this.setState(s=>({ vehicles:s.vehicles.map(v=>v.id===d.id?{...v,plate,type,team}:v), editData:null }));
+    if(SB_READY) try{ await db.updateVehicle(d.id,{plate,type,team}); this.toast('แก้ไขสำเร็จ',plate,'success'); }
+    catch(e){ this.toast('แก้ไขไม่สำเร็จ',e.message,'danger'); }
+    else this.toast('แก้ไขสำเร็จ',plate,'success');
+  }
 
   // ---------- charts ----------
   buildTrend(){
@@ -989,8 +1024,10 @@ class App extends React.Component {
         dt=build(t.name,{ isTeam:true, sub:'หัวหน้าชุด: '+(lead?lead.name:'-'), avatar:'ช',
           members:t.memberIds.map(id=>{ const m=S.workers.find(x=>x.id===id); return m?m.name:''; }).filter(Boolean), vehicles:t.plates }); } }
     }
-    const vehicleRows=S.vehicles.filter(v=>matchAny(v.plate,v.type,v.team)).map(v=>({ plate:v.plate, type:v.type, team:v.team,
-      iconWrap:{width:46,height:46,borderRadius:13,background:'#F3EAF8',color:'#8B2FA8',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0} }));
+    const vehicleRows=S.vehicles.filter(v=>matchAny(v.plate,v.type,v.team)).map(v=>({ id:v.id, plate:v.plate, type:v.type, team:v.team,
+      iconWrap:{width:46,height:46,borderRadius:13,background:'#F3EAF8',color:'#8B2FA8',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0},
+      onEdit:(e)=>{ e.stopPropagation(); this.openEditVehicle(v); },
+      onDelete:(e)=>{ e.stopPropagation(); this.openDeleteConfirm('vehicle',v.id,v.plate); } }));
 
     const is=S.issue;
     const segStyle=(active)=>({height:40,padding:'0 18px',borderRadius:10,border:'none',background:active?'linear-gradient(120deg,#8B2FA8,#B0309C)':'transparent',color:active?'#fff':'#6E687C',fontSize:13.5,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:8,transition:'all .18s',boxShadow:active?'0 4px 12px rgba(139,47,168,.28)':'none'});
@@ -1063,6 +1100,7 @@ class App extends React.Component {
 
       isMobile:S.isMobile, navOpen:S.navOpen,
       toggleNav:()=>this.setState({navOpen:!S.navOpen}), closeNav:()=>this.setState({navOpen:false}),
+      searchOpen:S.searchOpen, toggleSearch:()=>this.setState({searchOpen:!S.searchOpen}),
       isAdmin:this.props.isAdmin, onLoginClick:this.props.onLoginClick,
       invGrid: this.props.isAdmin ? '90px 2.2fr 1fr 1.4fr 1.1fr 100px 72px' : '90px 2.2fr 1fr 1.4fr 1.1fr 100px',
       workerRows, openAddWorker:()=>this.openModal('worker'),
@@ -1113,7 +1151,7 @@ class App extends React.Component {
       toggleTeamMember:(id)=>this.toggleTeamMember(id), toggleTeamPlate:(p)=>this.toggleTeamPlate(p),
       submitAddTeam:()=>this.submitAddTeam(), openAddTeam:()=>this.openModal('team'),
       toggleEditMember:(id)=>this.toggleEditMember(id), toggleEditPlate:(p)=>this.toggleEditPlate(p),
-      submitEditTeam:()=>this.submitEditTeam(),
+      submitEditTeam:()=>this.submitEditTeam(), submitEditVehicle:()=>this.submitEditVehicle(),
       catOptions:['ศีรษะ','ตา/ใบหน้า','มือ','เท้า','ลำตัว','กันตก','อื่นๆ'],
       deptOptions:['แผนกปฏิบัติการและบำรุงรักษา','แผนกก่อสร้าง','แผนกมิเตอร์และหม้อแปลง','แผนกบริการลูกค้า','แผนกคลังพัสดุ','แผนกบริหารรายได้ฯ','แผนกสนับสนุน','กฟส.เบตง'],
       vtypeOptions:['รถกระเช้าแก้ไฟ','รถเครน','รถเครนเจาะ','รถบรรทุก','รถกระบะ'],
@@ -1203,6 +1241,9 @@ class App extends React.Component {
             </div>}
 
             <div style={css('display:flex;align-items:center;gap:10px;flex-shrink:0')}>
+              {V.isMobile && (
+                <Box tag="button" onClick={V.toggleSearch} title="ค้นหา" s={'width:42px;height:42px;border-radius:12px;border:1px solid #E7E2EF;background:'+(V.searchOpen?'#F3EAF8':'#fff')+';color:'+(V.searchOpen?'#8B2FA8':'#5A5368')+';display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .16s'} h="border-color:#C9AED9;color:#8B2FA8">{V.searchIcon}</Box>
+              )}
               <div style={css('position:relative')}>
                 <Box tag="button" onClick={V.toggleNotif} s="width:42px;height:42px;border-radius:12px;border:1px solid #E7E2EF;background:#fff;color:#5A5368;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:all .16s" h="border-color:#C9AED9;color:#8B2FA8">
                   {V.bellIcon}
@@ -1239,6 +1280,17 @@ class App extends React.Component {
               }
             </div>
           </header>
+
+          {/* MOBILE SEARCH BAR */}
+          {V.isMobile && V.searchOpen && (
+            <div style={css('flex-shrink:0;padding:10px 12px;background:#fff;border-bottom:1px solid #EAE6F0;animation:fadeUp .2s ease')}>
+              <div style={css('position:relative')}>
+                <span style={css('position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.searchIcon}</span>
+                <Box tag="input" autoFocus value={V.globalSearch} onChange={V.onSearch} placeholder="ค้นหาอุปกรณ์, ผู้ปฏิบัติงาน, ทะเบียนรถ..."
+                  s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:12px;background:#F7F5FA;padding:0 14px 0 40px;font-size:14px;color:#211A2E;transition:all .18s" f={FIELD_FOCUS} />
+              </div>
+            </div>
+          )}
 
           {/* CONTENT */}
           <div data-scroll style={css('flex:1;overflow-y:auto;padding:'+(V.isMobile?'14px 12px 80px':'26px 28px 60px'))}>
@@ -1772,7 +1824,7 @@ class App extends React.Component {
                 <div style={css('display:flex;justify-content:flex-end;margin-bottom:16px')}>
                   {V.isAdmin && <Box tag="button" onClick={V.openAddVehicle} s="height:42px;padding:0 18px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(139,47,168,.28);transition:all .16s" h="transform:translateY(-1px);box-shadow:0 10px 24px rgba(139,47,168,.4)">{V.plusIcon} เพิ่มทะเบียนรถ</Box>}
                 </div>
-                <div style={css('display:grid;grid-template-columns:repeat(3,1fr);gap:14px')}>
+                <div style={css('display:grid;grid-template-columns:repeat('+(V.isMobile?'1':'3')+',1fr);gap:14px')}>
                   {V.vehicleRows.map((v,i)=>(
                     <Box key={i} s="background:#fff;border:1px solid #ECEAF1;border-radius:16px;padding:18px;box-shadow:0 1px 2px rgba(33,26,46,.04);transition:all .18s" h="transform:translateY(-2px);box-shadow:0 12px 28px rgba(122,35,168,.1)">
                       <div style={css('display:flex;align-items:center;gap:13px;margin-bottom:14px')}>
@@ -1781,6 +1833,12 @@ class App extends React.Component {
                           <div style={css("font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600")}>{v.plate}</div>
                           <div style={css('font-size:12px;color:#8A8398')}>{v.type}</div>
                         </div>
+                        {V.isAdmin && (
+                          <div style={css('display:flex;gap:6px;flex-shrink:0')}>
+                            <Box tag="button" onClick={v.onEdit} title="แก้ไข" s="width:32px;height:32px;border-radius:9px;border:1px solid #E7E2EF;background:#fff;color:#6E687C;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="border-color:#B97FCE;background:#F6EEFA;color:#8B2FA8">{V.penIcon}</Box>
+                            <Box tag="button" onClick={v.onDelete} title="ลบ" s="width:32px;height:32px;border-radius:9px;border:1px solid #E7E2EF;background:#fff;color:#6E687C;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="border-color:#F2C4C4;background:#FBEAEA;color:#D5443F">{V.trashIcon}</Box>
+                          </div>
+                        )}
                       </div>
                       <div style={css('display:flex;align-items:center;gap:8px;font-size:12.5px;color:#6E687C;background:#FAF8FC;padding:9px 12px;border-radius:10px')}>{V.teamMiniIcon} {v.team}</div>
                     </Box>
@@ -1887,7 +1945,7 @@ class App extends React.Component {
           <div onClick={V.closeEditData} style={css('position:fixed;inset:0;background:rgba(33,18,46,.42);backdrop-filter:blur(3px);z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;animation:overlayIn .2s ease')}>
             <div onClick={V.stop} style={css('width:100%;max-width:480px;background:#fff;border-radius:20px;box-shadow:0 30px 80px rgba(33,18,46,.4);overflow:hidden;animation:modalIn .28s cubic-bezier(.18,.89,.32,1.28)')}>
               <div style={css('padding:20px 24px;border-bottom:1px solid #F0EDF5;display:flex;align-items:center;justify-content:space-between')}>
-                <div style={css('font-size:16px;font-weight:600;display:flex;align-items:center;gap:9px')}><span style={css('color:#8B2FA8')}>{V.penIcon}</span>{V.editDataType==='worker'?'แก้ไขผู้ปฏิบัติงาน':V.editDataType==='movement'?'แก้ไขรายการประวัติ':V.editDataType==='team'?'แก้ไขชุดปฏิบัติงาน':'แก้ไขรายการอุปกรณ์'}</div>
+                <div style={css('font-size:16px;font-weight:600;display:flex;align-items:center;gap:9px')}><span style={css('color:#8B2FA8')}>{V.penIcon}</span>{V.editDataType==='worker'?'แก้ไขผู้ปฏิบัติงาน':V.editDataType==='movement'?'แก้ไขรายการประวัติ':V.editDataType==='team'?'แก้ไขชุดปฏิบัติงาน':V.editDataType==='vehicle'?'แก้ไขทะเบียนรถ':'แก้ไขรายการอุปกรณ์'}</div>
                 <Box tag="button" onClick={V.closeEditData} s="width:34px;height:34px;border-radius:9px;border:none;background:#F5F2F9;color:#8A8398;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" h="background:#FBEAEA;color:#D5443F">{V.closeIcon}</Box>
               </div>
               <div style={css('padding:22px 24px;display:flex;flex-direction:column;gap:14px')}>
@@ -1905,12 +1963,33 @@ class App extends React.Component {
                     <div style={css('position:relative')}>
                       <Box tag="select" value={V.editData.dept||''} onChange={(e)=>V.setEditField('dept',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f={FIELD_FOCUS}>
                         {V.deptOptions.map((d,i)=>(<option key={i} value={d}>{d}</option>))}
-                        <option value={V.editData.dept}>{V.editData.dept}</option>
+                        {V.editData.dept && !V.deptOptions.includes(V.editData.dept) && <option value={V.editData.dept}>{V.editData.dept}</option>}
                       </Box>
                       <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
                     </div>
                   </div>
                   <Box tag="button" onClick={V.submitEditWorker} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกการแก้ไข</Box>
+                </>)}
+                {V.editDataType==='vehicle' && (<>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ทะเบียนรถ</label>
+                    <Box tag="input" value={V.editData.plate||''} onChange={(e)=>V.setEditField('plate',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px;font-family:'IBM Plex Mono',monospace" f={FIELD_FOCUS} />
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ประเภทรถ</label>
+                    <div style={css('position:relative')}>
+                      <Box tag="select" value={V.editData.vtype||''} onChange={(e)=>V.setEditField('vtype',e.target.value)} s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 32px 0 13px;font-size:13.5px;appearance:none;cursor:pointer" f={FIELD_FOCUS}>
+                        {V.vtypeOptions.map((t,i)=>(<option key={i} value={t}>{t}</option>))}
+                        {V.editData.vtype && !V.vtypeOptions.includes(V.editData.vtype) && <option value={V.editData.vtype}>{V.editData.vtype}</option>}
+                      </Box>
+                      <span style={css('position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#A79FB6;pointer-events:none')}>{V.chevronIcon}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={css('display:block;font-size:12.5px;color:#6E687C;font-weight:500;margin-bottom:7px')}>ชุดงานที่สังกัด</label>
+                    <Box tag="input" value={V.editData.team||''} onChange={(e)=>V.setEditField('team',e.target.value)} placeholder="เช่น ชุดปฏิบัติการที่ 1" s="width:100%;height:44px;border:1px solid #E7E2EF;border-radius:11px;background:#F7F5FA;padding:0 13px;font-size:14px" f={FIELD_FOCUS} />
+                  </div>
+                  <Box tag="button" onClick={V.submitEditVehicle} s="height:48px;margin-top:4px;border-radius:12px;border:none;background:linear-gradient(120deg,#8B2FA8,#B0309C);color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(139,47,168,.3)" h="filter:brightness(1.05)">บันทึกการแก้ไข</Box>
                 </>)}
                 {V.editDataType==='item' && (<>
                   <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:12px')}>
