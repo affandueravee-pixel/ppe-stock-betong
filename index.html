@@ -18,6 +18,7 @@
 <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2.38.5/dist/umd/supabase.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
   // ============================================================
   // Supabase config — paste your values from the Supabase Dashboard
@@ -151,16 +152,19 @@ const db = {
       sb.from('vehicles').select('*').order('created_at'),
       sb.from('teams').select('*').order('created_at'),
       sb.from('movements').select('*').order('created_at',{ascending:false}),
-      sb.from('app_meta').select('*').eq('k','refSeq').single(),
+      sb.from('app_meta').select('*').in('k',['refSeq','rcvSeq']),
     ]);
     for(const r of [items,workers,vehicles,teams,movements]){ if(r.error) throw r.error; }
+    const metaRows = meta.data||[];
+    const metaVal = (k,def)=>{ const row=metaRows.find(r=>r.k===k); return row ? row.v : def; };
     return {
       items:     (items.data||[]).map(r=>({ id:r.id, code:r.code, name:r.name, cat:r.cat, unit:r.unit, qty:r.qty, min:r.min_qty, loc:r.loc })),
       workers:   workers.data||[],
       vehicles:  vehicles.data||[],
       teams:     (teams.data||[]).map(r=>({ id:r.id, name:r.name, leadId:r.lead_id, memberIds:r.member_ids||[], plates:r.plates||[], ord:(r.ord==null?null:r.ord) })).sort((a,b)=>(a.ord==null?1e9:a.ord)-(b.ord==null?1e9:b.ord)),
       movements: (movements.data||[]).map(r=>({ id:r.id, type:r.type, kind:r.kind, item:r.item, qty:r.qty, unit:r.unit, party:r.party, sub:r.sub, ref:r.ref, date:r.date_text })),
-      refSeq:    meta.data ? meta.data.v : 24,
+      refSeq:    metaVal('refSeq', 24),
+      rcvSeq:    metaVal('rcvSeq', 40),
     };
   },
   async upsertItem(it){
@@ -176,7 +180,9 @@ const db = {
     const mapped = rows.map(m=>({ id:m.id, type:m.type, kind:m.kind||null, item:m.item, qty:m.qty, unit:m.unit, party:m.party, sub:m.sub, ref:m.ref, date_text:m.date }));
     const { error } = await sb.from('movements').insert(mapped); if(error) throw error;
   },
-  async setRefSeq(v){ const { error } = await sb.from('app_meta').upsert({ k:'refSeq', v }); if(error) throw error; },
+  async setMeta(k, v){ const { error } = await sb.from('app_meta').upsert({ k, v }); if(error) throw error; },
+  async setRefSeq(v){ return this.setMeta('refSeq', v); },
+  async saveSignature(row){ const { error } = await sb.from('signatures').insert(row); if(error) throw error; },
   async deleteWorker(id){ const { error } = await sb.from('workers').delete().eq('id', id); if(error) throw error; },
   async updateWorker(id, data){ const { error } = await sb.from('workers').update(data).eq('id', id); if(error) throw error; },
   async deleteItem(id){ const { error } = await sb.from('items').delete().eq('id', id); if(error) throw error; },
@@ -345,6 +351,7 @@ class App extends React.Component {
     siItem: '',
     siDate: todayISO(),
     refSeq: 24,
+    rcvSeq: 40,
     items: [
       { id:'i1', code:'PPE-001', name:'หมวกนิรภัย (Safety Helmet)', cat:'ศีรษะ', unit:'ใบ', qty:42, min:15, loc:'ชั้น A-1' },
       { id:'i2', code:'PPE-002', name:'แว่นตานิรภัย (Safety Glass)', cat:'ตา/ใบหน้า', unit:'อัน', qty:8, min:10, loc:'ชั้น A-2' },
@@ -417,17 +424,31 @@ class App extends React.Component {
 
   componentDidMount(){
     if(SB_READY){ this.setState({ loading:true }); this.reloadFromDb(); }
-    else { this.animateKpis(); }
+    else {
+      try { const raw=localStorage.getItem('ppe_demo'); if(raw){ const d=JSON.parse(raw); if(d&&d.items) this.setState(d, ()=>this.animateKpis()); else this.animateKpis(); } else this.animateKpis(); }
+      catch(e){ this.animateKpis(); }
+    }
     this._onResize=()=>this.setState({isMobile:window.innerWidth<768,navOpen:false});
     window.addEventListener('resize',this._onResize);
   }
-  componentWillUnmount(){ cancelAnimationFrame(this._raf); clearTimeout(this._tt); window.removeEventListener('resize',this._onResize); }
+  componentDidUpdate(){
+    // โหมด DEMO (ไม่มี Supabase): เก็บข้อมูลลง localStorage กันหายเมื่อรีเฟรช
+    if(SB_READY) return;
+    clearTimeout(this._saveT);
+    this._saveT=setTimeout(()=>{
+      try { const s=this.state; localStorage.setItem('ppe_demo', JSON.stringify({
+        items:s.items, workers:s.workers, vehicles:s.vehicles, teams:s.teams,
+        movements:s.movements, refSeq:s.refSeq, rcvSeq:s.rcvSeq }));
+      } catch(e){}
+    },400);
+  }
+  componentWillUnmount(){ cancelAnimationFrame(this._raf); clearTimeout(this._tt); clearTimeout(this._saveT); window.removeEventListener('resize',this._onResize); }
   async reloadFromDb(){
     try {
       const all = await db.loadAll();
       this.setState({
         items:all.items, workers:all.workers, vehicles:all.vehicles,
-        teams:all.teams, movements:all.movements, refSeq:all.refSeq, loading:false
+        teams:all.teams, movements:all.movements, refSeq:all.refSeq, rcvSeq:all.rcvSeq, loading:false
       }, ()=>this.animateKpis());
     } catch(e){
       this.setState({ loading:false });
@@ -662,6 +683,7 @@ class App extends React.Component {
     if(is.kind==='individual'){ const w=this.state.workers.find(x=>x.id===is.recipientId); party=w.name; sub=w.dept; }
     else { const t=this.state.teams.find(x=>x.id===is.recipientId); party=t.name; sub='รถ '+(t.plates.join(', ')||'-'); }
     const seq=this.state.refSeq+1; const ref='ISS-'+String(seq).padStart(4,'0'); const date=thaiFromISO(this.state.issueDate)||this.thaiToday();
+    const sigData=(this._sigCanvas&&this.state.sigInk) ? this._sigCanvas.toDataURL('image/png') : null;
     const newMoves=[];
     const movedIds=[];
     for(const l of is.lines){ const it=items.find(x=>x.id===l.itemId); it.qty-=l.qty; movedIds.push(l.itemId);
@@ -675,6 +697,8 @@ class App extends React.Component {
         await db.insertMovements(newMoves);
         await db.setRefSeq(seq);
       } catch(e){ this.toast('บันทึกลง DB ไม่สำเร็จ', e.message||'', 'danger'); return; }
+      // ลายเซ็น: บันทึกแยก ถ้าตาราง signatures ยังไม่ถูกสร้างก็ไม่ขัดจังหวะการเบิก
+      if(sigData){ try { await db.saveSignature({ ref, party, date_text:date, data:sigData }); } catch(e){ console.warn('saveSignature skipped:', e.message||e); } }
     }
     this.toast('เบิกจ่ายสำเร็จ', ref+' · '+party+' · '+is.lines.reduce((a,b)=>a+b.qty,0)+' ชิ้น','success');
   }
@@ -687,17 +711,43 @@ class App extends React.Component {
     if(qty<1){ this.toast('จำนวนไม่ถูกต้อง','ระบุจำนวนรับเข้าอย่างน้อย 1','warn'); return; }
     const items=this.state.items.map(x=>x.id===id?{...x,qty:x.qty+qty}:x);
     const it=items.find(x=>x.id===id);
-    const seq=this.state.movements.filter(m=>m.type==='in').length+41; const ref='RCV-'+String(seq).padStart(4,'0');
+    const seq=this.state.rcvSeq+1; const ref='RCV-'+String(seq).padStart(4,'0');
     const mv={ id:'m'+Date.now()+Math.floor(Math.random()*1e6), type:'in', kind:null, item:it.name, qty, unit:it.unit, party:by, sub:lot, ref, date:thaiFromISO(this.state.siDate)||this.thaiToday() };
-    this.setState({ items, movements:[mv, ...this.state.movements], siItem:'', siDate:todayISO() });
+    this.setState({ items, movements:[mv, ...this.state.movements], rcvSeq:seq, siItem:'', siDate:todayISO() });
     const el=document.getElementById('si_lot'); if(el) el.value=''; const el2=document.getElementById('si_by'); if(el2) el2.value='';
     if(SB_READY){
-      try { await db.updateItemQty(id, it.qty); await db.insertMovements([mv]); }
+      try { await db.updateItemQty(id, it.qty); await db.insertMovements([mv]); await db.setMeta('rcvSeq', seq); }
       catch(e){ this.toast('บันทึกลง DB ไม่สำเร็จ', e.message||'', 'danger'); return; }
     }
     this.toast('รับเข้าสำเร็จ', it.name+' +'+qty+' '+it.unit,'success');
   }
   val(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+
+  // ---------- export excel ----------
+  exportExcel(){
+    if(typeof XLSX==='undefined'){ this.toast('ส่งออกไม่สำเร็จ','ไลบรารี Excel ยังโหลดไม่เสร็จ ลองอีกครั้ง','danger'); return; }
+    const statusText=(it)=> it.qty<=0?'หมดสต็อก' : it.qty<=it.min?'ใกล้หมด' : 'ปกติ';
+    const itemRows=this.state.items.map(it=>({
+      'รหัส':it.code, 'รายการ':it.name, 'หมวดหมู่':it.cat,
+      'คงเหลือ':it.qty, 'หน่วย':it.unit, 'ขั้นต่ำ':it.min,
+      'จุดจัดเก็บ':it.loc, 'สถานะ':statusText(it),
+    }));
+    const moveRows=this.state.movements.map(m=>({
+      'วันที่':m.date, 'ประเภท':m.type==='in'?'รับเข้า':'จ่ายออก', 'รายการ':m.item,
+      'จำนวน':(m.type==='in'?'+':'-')+m.qty, 'หน่วย':m.unit,
+      'ผู้รับ / แหล่งที่มา':m.party||'', 'หมายเหตุ':m.sub||'', 'เลขที่':m.ref||'',
+    }));
+    const wb=XLSX.utils.book_new();
+    const ws1=XLSX.utils.json_to_sheet(itemRows);
+    ws1['!cols']=[{wch:10},{wch:34},{wch:12},{wch:9},{wch:7},{wch:8},{wch:12},{wch:11}];
+    XLSX.utils.book_append_sheet(wb, ws1, 'อุปกรณ์คงเหลือ');
+    const ws2=XLSX.utils.json_to_sheet(moveRows);
+    ws2['!cols']=[{wch:13},{wch:10},{wch:34},{wch:9},{wch:7},{wch:22},{wch:18},{wch:12}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'ความเคลื่อนไหว');
+    const fname='PPE-รายงาน-'+todayISO()+'.xlsx';
+    XLSX.writeFile(wb, fname);
+    this.toast('ส่งออกสำเร็จ', fname, 'success');
+  }
 
   // ---------- admin guard ----------
   requireAdmin(){ if(!this.props.isAdmin){ this.toast('ต้องเข้าสู่ระบบก่อน','เฉพาะ จนท.คลัง เท่านั้นที่แก้ไขข้อมูลได้','warn'); return false; } return true; }
@@ -1009,7 +1059,7 @@ class App extends React.Component {
       reportStats, reportIsStock, reportIsMove:!reportIsStock, catReport,
       setReportStock:()=>this.setState({reportTab:'stock'}), setReportMove:()=>this.setState({reportTab:'move'}),
       reportStockStyle:tabStyle(reportIsStock), reportMoveStyle:tabStyle(!reportIsStock),
-      exportReport:()=>this.toast('กำลังเตรียมไฟล์','ระบบกำลังสร้างรายงาน Excel...','success'),
+      exportReport:()=>this.exportExcel(),
 
       isMobile:S.isMobile, navOpen:S.navOpen,
       toggleNav:()=>this.setState({navOpen:!S.navOpen}), closeNav:()=>this.setState({navOpen:false}),
